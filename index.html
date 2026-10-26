@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TUIN Gesture Synth</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one stage (the camera canvas) beside a narrow control rail; rail drops below on small screens. */
+:root{
+  --bg:#0a0a0a; --panel:#141312; --line:#2b2724; --fg:#f6f3ef; --muted:#9b938b;
+  --orange:#ff6a13; --orange-soft:rgba(255,106,19,.16);
+  --display:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font:15px/1.5 var(--display);}
+.app{min-height:100%;display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:24px;padding:20px max(16px,env(safe-area-inset-right)) 20px max(16px,env(safe-area-inset-left))}
+.stage{display:flex;align-items:center;justify-content:center;min-width:0}
+canvas{display:block;max-width:100%;max-height:calc(100vh - 40px);width:auto;height:auto;border-radius:14px;background:#000;border:1px solid var(--line)}
+.rail{display:flex;flex-direction:column;gap:18px;min-width:0}
+h1{font-weight:800;font-size:34px;line-height:1;letter-spacing:-.02em;margin:4px 0 0;text-wrap:balance}
+h1 span{color:var(--orange)}
+.sub{color:var(--muted);margin:6px 0 0;font-size:14px}
+.group{display:flex;flex-direction:column;gap:10px;padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+.label{font:600 11px/1 var(--mono);text-transform:uppercase;letter-spacing:.12em;color:var(--muted)}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.row>*{flex:1 1 0;min-width:0}
+select,input[type=text]{width:100%;background:#0e0d0c;color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:9px 10px;font:14px var(--display)}
+input[type=range]{width:100%;accent-color:var(--orange)}
+.seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{flex:1;background:transparent;color:var(--muted);border:0;padding:9px 6px;font:600 13px var(--display);cursor:pointer}
+.seg button[aria-pressed=true]{background:var(--orange);color:#000}
+.btn{appearance:none;border:0;border-radius:10px;padding:13px 16px;font:800 16px var(--display);cursor:pointer;background:var(--orange);color:#000}
+.btn.ghost{background:transparent;color:var(--fg);border:1px solid var(--line)}
+.btn.rec[data-on=true]{background:#fff;color:#000}
+.btn:disabled{opacity:.45;cursor:default}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--orange);outline-offset:2px}
+.check{display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer}
+.check input{accent-color:var(--orange);width:16px;height:16px}
+.status{font:13px/1.4 var(--mono);color:var(--muted);min-height:1.4em}
+.status.err{color:var(--orange)}
+.map{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font:13px/1.45 var(--mono)}
+.map b{color:var(--orange);font-weight:600}
+.keys{font:12px/1.5 var(--mono);color:var(--muted)}
+kbd{font:inherit;border:1px solid var(--line);border-radius:4px;padding:0 4px;color:var(--fg)}
+@media (max-width:860px){.app{grid-template-columns:1fr}canvas{max-height:70vh}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="stage"><canvas id="stage" width="1080" height="1920"></canvas></div>
+
+  <aside class="rail">
+    <div>
+      <h1>TUIN <span>Gesture</span> Synth</h1>
+      <p class="sub">Your hands are the instrument. Left hand plays chords, right hand plays notes.</p>
+    </div>
+
+    <button class="btn" id="startBtn">Start camera &amp; sound</button>
+    <div class="status" id="status">Use Chrome for best results. Allow camera access when asked.</div>
+
+    <div class="group">
+      <div class="label">How to play</div>
+      <div class="map">
+        <b>Left side</b><span>1 to 5 fingers picks a chord</span>
+        <b>Right side</b><span>1 to 5 fingers plays a note</span>
+        <b>Fist</b><span>silence</span>
+        <b>Right hand up</b><span>octave higher</span>
+        <b>Left hand up</b><span>brighter pad</span>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="label">Sound</div>
+      <div class="row">
+        <select id="key" aria-label="Key"></select>
+        <div class="seg" id="scale"><button data-v="major" aria-pressed="true">Major</button><button data-v="minor" aria-pressed="false">Minor</button></div>
+      </div>
+      <div class="seg" id="sound"><button data-v="pluck" aria-pressed="true">Pluck</button><button data-v="keys" aria-pressed="false">Keys</button><button data-v="glass" aria-pressed="false">Glass</button></div>
+      <label class="check"><input type="checkbox" id="beat"> Beat</label>
+      <div class="row" style="align-items:center"><span class="label" style="flex:0 0 auto">BPM <span id="bpmVal">122</span></span><input type="range" id="bpm" min="80" max="140" value="122"></div>
+      <div class="row" style="align-items:center"><span class="label" style="flex:0 0 auto">Volume</span><input type="range" id="vol" min="0" max="100" value="80"></div>
+    </div>
+
+    <div class="group">
+      <div class="label">Video</div>
+      <div class="seg" id="format"><button data-v="portrait" aria-pressed="true">9:16 TikTok</button><button data-v="landscape" aria-pressed="false">16:9</button></div>
+      <select id="camera" aria-label="Camera"><option value="">Default camera</option></select>
+      <input type="text" id="caption" value="POV: geen instrumente nie, net my hande" aria-label="Caption on video">
+      <label class="check"><input type="checkbox" id="tag" checked> Show TUIN tag</label>
+      <button class="btn rec" id="recBtn" data-on="false" disabled>Record</button>
+    </div>
+
+    <div class="keys">No camera? Test with the keyboard: hold <kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd><kbd>R</kbd><kbd>T</kbd> for chords and <kbd>1</kbd> to <kbd>5</kbd> for notes.</div>
+  </aside>
+</div>
+
+<video id="video" playsinline muted style="display:none"></video>
+
+<script type="module">
+const NOTE = ["C","C#","D","Eb","E","F","F#","G","Ab","A","Bb","B"];
+const SCALES = { major:[0,2,4,5,7,9,11], minor:[0,2,3,5,7,8,10] };
+const PENTA  = { major:[0,2,4,7,9],      minor:[0,3,5,7,10] };
+// finger count -> scale degree for chords (major: I V vi IV ii, minor: i VI III VII iv)
+const CHORD_DEG = { major:[0,4,5,3,1], minor:[0,5,2,6,3] };
+const ORANGE = "#ff6a13";
+const HAND_LINKS = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
+
+const state = { key:0, scale:"major", sound:"pluck", beat:false, bpm:122, vol:.8, format:"portrait", caption:"", tag:true };
+const $ = id => document.getElementById(id);
+const canvas = $("stage"), g = canvas.getContext("2d"), video = $("video");
+
+/* ---------- controls ---------- */
+NOTE.forEach((n,i)=>{ const o=document.createElement("option"); o.value=i; o.textContent="Key of "+n; $("key").appendChild(o); });
+$("key").value = "9"; state.key = 9; // A
+$("key").onchange = e => { state.key = +e.target.value; refreshVoices(); };
+function seg(id, prop, after){
+  $(id).querySelectorAll("button").forEach(b=>b.onclick=()=>{
+    $(id).querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed", x===b));
+    state[prop]=b.dataset.v; after&&after();
+  });
+}
+seg("scale","scale",()=>refreshVoices());
+seg("sound","sound");
+seg("format","format",()=>sizeCanvas());
+$("beat").onchange = e => state.beat = e.target.checked;
+$("bpm").oninput = e => { state.bpm=+e.target.value; $("bpmVal").textContent=state.bpm; if(delay) delay.delayTime.setTargetAtTime(60/state.bpm*.75, ac.currentTime, .05); };
+$("vol").oninput = e => { state.vol=e.target.value/100; if(master) master.gain.setTargetAtTime(state.vol, ac.currentTime, .05); };
+$("caption").oninput = e => state.caption = e.target.value;
+$("tag").onchange = e => state.tag = e.target.checked;
+state.caption = $("caption").value;
+
+function sizeCanvas(){ if(state.format==="portrait"){canvas.width=1080;canvas.height=1920;} else {canvas.width=1920;canvas.height=1080;} }
+function setStatus(t, err){ $("status").textContent=t; $("status").classList.toggle("err", !!err); }
+
+/* ---------- audio ---------- */
+let ac, master, comp, verb, delay, leadOut, padFilter, padOut, recDest, noiseBuf;
+const mtof = m => 440*Math.pow(2,(m-69)/12);
+function impulse(sec){
+  const len=ac.sampleRate*sec, b=ac.createBuffer(2,len,ac.sampleRate);
+  for(let c=0;c<2;c++){const d=b.getChannelData(c);for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/len,3);}
+  return b;
+}
+function initAudio(){
+  ac = new (window.AudioContext||window.webkitAudioContext)();
+  comp = ac.createDynamicsCompressor(); comp.threshold.value=-14; comp.ratio.value=4;
+  master = ac.createGain(); master.gain.value=state.vol;
+  master.connect(comp); comp.connect(ac.destination);
+  recDest = ac.createMediaStreamDestination(); comp.connect(recDest);
+  verb = ac.createConvolver(); verb.buffer = impulse(3);
+  const verbRet = ac.createGain(); verbRet.gain.value=.5; verb.connect(verbRet).connect(master);
+  delay = ac.createDelay(2); delay.delayTime.value = 60/state.bpm*.75;
+  const fb = ac.createGain(); fb.gain.value=.33; const dlp = ac.createBiquadFilter(); dlp.frequency.value=2800;
+  delay.connect(dlp).connect(fb).connect(delay);
+  const dRet = ac.createGain(); dRet.gain.value=.28; dlp.connect(dRet).connect(master);
+  leadOut = ac.createGain(); leadOut.gain.value=1;
+  leadOut.connect(master);
+  const ls1=ac.createGain(); ls1.gain.value=.35; leadOut.connect(ls1).connect(verb);
+  const ls2=ac.createGain(); ls2.gain.value=.5;  leadOut.connect(ls2).connect(delay);
+  padFilter = ac.createBiquadFilter(); padFilter.type="lowpass"; padFilter.frequency.value=900; padFilter.Q.value=1.2;
+  padOut = ac.createGain(); padOut.gain.value=1;
+  padFilter.connect(padOut); padOut.connect(master);
+  const ps=ac.createGain(); ps.gain.value=.7; padOut.connect(ps).connect(verb);
+  noiseBuf = ac.createBuffer(1, ac.sampleRate, ac.sampleRate);
+  const nd = noiseBuf.getChannelData(0); for(let i=0;i<nd.length;i++) nd[i]=Math.random()*2-1;
+  setInterval(scheduler, 25);
+}
+
+/* lead voice */
+let leadVoice=null, leadMidi=null;
+function leadOn(midi){
+  const t=ac.currentTime;
+  if(leadVoice) leadVoice.release(.12);
+  const f=mtof(midi), out=ac.createGain(), filt=ac.createBiquadFilter();
+  filt.type="lowpass"; filt.Q.value=3; out.gain.value=0;
+  const oscs=[];
+  const add=(type,freq,det=0,lvl=1)=>{const o=ac.createOscillator(),gg=ac.createGain();o.type=type;o.frequency.value=freq;o.detune.value=det;gg.gain.value=lvl;o.connect(gg).connect(filt);o.start(t);oscs.push(o);};
+  let a,d,s,peak=.24;
+  if(state.sound==="pluck"){ add("sawtooth",f,-7); add("square",f,7,.45); filt.frequency.setValueAtTime(7000,t); filt.frequency.exponentialRampToValueAtTime(1000,t+.35); a=.004;d=.5;s=.3; }
+  else if(state.sound==="keys"){ add("triangle",f); add("sine",f*2,0,.35); add("sine",f*4,3,.08); filt.frequency.value=4200; a=.008;d=1.4;s=.18; peak=.3; }
+  else { add("sine",f); add("sine",f*3,4,.12); add("triangle",f*2,-4,.15); filt.frequency.value=5200; a=.05;d=.8;s=.7; peak=.26; }
+  out.gain.setValueAtTime(0,t); out.gain.linearRampToValueAtTime(peak,t+a); out.gain.setTargetAtTime(peak*s,t+a,d/3);
+  filt.connect(out).connect(leadOut);
+  leadVoice = { release(r=.6){ const n=ac.currentTime; out.gain.cancelScheduledValues(n); out.gain.setValueAtTime(out.gain.value,n); out.gain.setTargetAtTime(0,n,r/4); oscs.forEach(o=>o.stop(n+r+.2)); } };
+  leadMidi=midi;
+}
+function leadOff(){ if(leadVoice){ leadVoice.release(.7); leadVoice=null; leadMidi=null; } }
+
+/* pad voice */
+let padVoice=null;
+function padOn(notes){
+  const t=ac.currentTime;
+  if(padVoice) padVoice.release(1.2);
+  const out=ac.createGain(); out.gain.value=0; const oscs=[];
+  notes.forEach((m,i)=>{
+    if(i===0){ const o=ac.createOscillator(),gg=ac.createGain(); o.type="sine"; o.frequency.value=mtof(m); gg.gain.value=.16; o.connect(gg).connect(out); o.start(t); oscs.push(o); return; }
+    [-9,9].forEach(det=>{ const o=ac.createOscillator(),gg=ac.createGain(); o.type="sawtooth"; o.frequency.value=mtof(m); o.detune.value=det; gg.gain.value=.045; o.connect(gg).connect(out); o.start(t); oscs.push(o); });
+  });
+  out.connect(padFilter);
+  out.gain.setValueAtTime(0,t); out.gain.linearRampToValueAtTime(1,t+.45);
+  padVoice = { release(r=1.4){ const n=ac.currentTime; out.gain.cancelScheduledValues(n); out.gain.setValueAtTime(out.gain.value,n); out.gain.setTargetAtTime(0,n,r/4); oscs.forEach(o=>o.stop(n+r+.3)); } };
+}
+function padOff(){ if(padVoice){ padVoice.release(1.6); padVoice=null; } }
+
+/* beat */
+let nextStep=0, step=0;
+function scheduler(){
+  if(!ac) return;
+  if(nextStep < ac.currentTime) nextStep = ac.currentTime + .05;
+  while(nextStep < ac.currentTime + .12){
+    if(state.beat){
+      if(step%4===0) kick(nextStep);
+      if(step%4===2) hat(nextStep, .09);
+      if(step%16===4||step%16===12) clap(nextStep);
+    }
+    nextStep += 60/state.bpm/4; step++;
+  }
+}
+function kick(t){ const o=ac.createOscillator(),gg=ac.createGain(); o.frequency.setValueAtTime(150,t); o.frequency.exponentialRampToValueAtTime(42,t+.12); gg.gain.setValueAtTime(.9,t); gg.gain.exponentialRampToValueAtTime(.001,t+.4); o.connect(gg).connect(master); o.start(t); o.stop(t+.45); }
+function hat(t,lvl){ const s=ac.createBufferSource(),f=ac.createBiquadFilter(),gg=ac.createGain(); s.buffer=noiseBuf; f.type="highpass"; f.frequency.value=8000; gg.gain.setValueAtTime(lvl,t); gg.gain.exponentialRampToValueAtTime(.001,t+.05); s.connect(f).connect(gg).connect(master); s.start(t); s.stop(t+.06); }
+function clap(t){ const s=ac.createBufferSource(),f=ac.createBiquadFilter(),gg=ac.createGain(); s.buffer=noiseBuf; f.type="bandpass"; f.frequency.value=1500; f.Q.value=.8; gg.gain.setValueAtTime(.35,t); gg.gain.exponentialRampToValueAtTime(.001,t+.18); s.connect(f).connect(gg).connect(master); const v=ac.createGain(); v.gain.value=.3; gg.connect(v).connect(verb); s.start(t); s.stop(t+.2); }
+
+/* music theory */
+function chordFor(n){
+  const sc=SCALES[state.scale], deg=CHORD_DEG[state.scale][n-1];
+  const pick=i=>{ const k=deg+i; return sc[k%7]+12*Math.floor(k/7); };
+  const root=48+state.key, tri=[pick(0),pick(2),pick(4)].map(x=>root+x);
+  const third=(tri[1]-tri[0]), fifth=(tri[2]-tri[0]);
+  const name = NOTE[tri[0]%12] + (fifth===6?"dim":third===3?"m":"");
+  return { notes:[tri[0]-12, ...tri], name };
+}
+function noteFor(n, zone){ return 60+state.key+PENTA[state.scale][n-1]+12*zone; }
+const noteName = m => NOTE[m%12]+(Math.floor(m/12)-1);
+
+/* ---------- hand tracking ---------- */
+let landmarker=null, running=false, lastVideoTime=-1, hands=[];
+const roles = {
+  pad:{ cand:0, frames:0, count:0, miss:99, label:"", y:.5 },
+  lead:{ cand:0, frames:0, count:0, miss:99, label:"", y:.5, zone:0 }
+};
+const keyHeld = { pad:0, lead:0 };
+
+function dist(a,b){ return Math.hypot(a.x-b.x, a.y-b.y, (a.z-b.z)*.5); }
+function countFingers(p){
+  const w=p[0]; let n=0;
+  for(const [tip,pip] of [[8,6],[12,10],[16,14],[20,18]]) if(dist(p[tip],w) > dist(p[pip],w)*1.12) n++;
+  const palm=dist(p[0],p[9]);
+  if(dist(p[4],p[17]) > dist(p[3],p[17])*1.06 && dist(p[4],p[5]) > palm*.5) n++;
+  return n;
+}
+
+function commit(role, n){
+  const r=roles[role]; if(r.count===n && !(role==="lead" && n>0 && r.zoneChanged)) return;
+  r.count=n; r.zoneChanged=false;
+  if(!ac) return;
+  if(role==="pad"){ if(n===0){ padOff(); r.label=""; } else { const c=chordFor(n); padOn(c.notes); r.label=c.name; } }
+  else { if(n===0){ leadOff(); r.label=""; } else { const m=noteFor(n, r.zone); leadOn(m); r.label=noteName(m); } }
+}
+function refreshVoices(){ for(const k of ["pad","lead"]){ const n=roles[k].count; roles[k].count=-1; commit(k,n); } }
+
+function feed(role, raw){
+  const r=roles[role];
+  if(raw===r.cand) r.frames++; else { r.cand=raw; r.frames=1; }
+  if(r.frames>=3) commit(role, raw);
+}
+
+/* ---------- drawing ---------- */
+function layout(){
+  const W=canvas.width,H=canvas.height, vw=video.videoWidth||1280, vh=video.videoHeight||720;
+  const s=Math.max(W/vw,H/vh), dw=vw*s, dh=vh*s;
+  return { W,H,vw,vh,dw,dh,ox:(W-dw)/2,oy:(H-dh)/2 };
+}
+function toCanvas(lm,L){ return { x:L.W-(L.ox+lm.x*L.dw), y:L.oy+lm.y*L.dh }; }
+
+function frame(){
+  requestAnimationFrame(frame);
+  const L=layout(), {W,H}=L, u=Math.min(W,H)/1080;
+  g.fillStyle="#000"; g.fillRect(0,0,W,H);
+
+  if(running && video.readyState>=2){
+    g.save(); g.translate(W,0); g.scale(-1,1); g.drawImage(video,L.ox,L.oy,L.dw,L.dh); g.restore();
+    if(landmarker && video.currentTime!==lastVideoTime){
+      lastVideoTime=video.currentTime;
+      try{
+        const res=landmarker.detectForVideo(video, performance.now());
+        hands=(res.landmarks||[]).map(lm=>{
+          const px=lm.map(p=>({x:p.x*L.vw,y:p.y*L.vh,z:p.z*L.vw}));
+          const c=lm.map(p=>toCanvas(p,L));
+          return { c, n:countFingers(px), cx:c[0].x, cy:c[9].y };
+        });
+      }catch(e){ console.warn(e); }
+    }
+  } else if(!running){ idleScreen(W,H,u); }
+
+  // assign roles by screen side
+  let padHand=null, leadHand=null;
+  if(hands.length>=2){ const s=[...hands].sort((a,b)=>a.cx-b.cx); padHand=s[0]; leadHand=s[s.length-1]; }
+  else if(hands.length===1){ hands[0].cx<W/2 ? padHand=hands[0] : leadHand=hands[0]; }
+  if(!running){ padHand=leadHand=null; }
+
+  for(const [role,h] of [["pad",padHand],["lead",leadHand]]){
+    const r=roles[role];
+    if(keyHeld[role]){ r.miss=0; feed(role,keyHeld[role]); continue; }
+    if(h){
+      r.miss=0; r.y=h.cy/H;
+      if(role==="lead"){ const z = r.y<.36?1:(r.y>.74?-1:0); if(z!==r.zone){ r.zone=z; r.zoneChanged=true; } }
+      if(role==="pad" && padFilter){ padFilter.frequency.setTargetAtTime(400+Math.pow(1-Math.min(1,Math.max(0,r.y)),2)*4200, ac.currentTime, .08); }
+      feed(role,h.n);
+    } else if(++r.miss>8){ feed(role,0); }
+  }
+
+  if(running){
+    // octave guides on the note side
+    g.save(); g.strokeStyle="rgba(255,255,255,.14)"; g.setLineDash([10*u,12*u]); g.lineWidth=2*u;
+    for(const y of [.36,.74]){ g.beginPath(); g.moveTo(W*.55,H*y); g.lineTo(W,H*y); g.stroke(); }
+    g.setLineDash([]); g.fillStyle="rgba(255,255,255,.4)"; g.font=`600 ${20*u}px "IBM Plex Mono",monospace`; g.textAlign="right";
+    g.fillText("HIGH",W-20*u,H*.36-12*u); g.fillText("MID",W-20*u,H*.74-12*u); g.fillText("LOW",W-20*u,H*.74+32*u);
+    g.restore();
+  }
+  for(const h of [padHand,leadHand]) if(h) drawHand(h, h===padHand?"pad":"lead", u);
+  drawHud(W,H,u);
+}
+
+function drawHand(h, role, u){
+  const c=h.c;
+  g.save(); g.lineCap="round";
+  g.strokeStyle=ORANGE; g.lineWidth=5*u; g.shadowColor=ORANGE; g.shadowBlur=14*u;
+  g.beginPath(); for(const [a,b] of HAND_LINKS){ g.moveTo(c[a].x,c[a].y); g.lineTo(c[b].x,c[b].y); } g.stroke();
+  g.shadowBlur=0; g.fillStyle="#fff";
+  for(const i of [4,8,12,16,20]){ g.beginPath(); g.arc(c[i].x,c[i].y,8*u,0,Math.PI*2); g.fill(); }
+  const r=roles[role]; const xs=c.map(p=>p.x), ys=c.map(p=>p.y);
+  const x=(Math.min(...xs)+Math.max(...xs))/2, y=Math.max(...ys)+70*u;
+  if(r.count>0 && r.label){
+    g.font=`800 ${64*u}px "Bricolage Grotesque",sans-serif`; g.textAlign="center"; g.textBaseline="middle";
+    const tw=g.measureText(r.label).width+48*u;
+    g.fillStyle="rgba(0,0,0,.55)"; roundRect(x-tw/2,y-44*u,tw,88*u,44*u); g.fill();
+    g.fillStyle=ORANGE; g.fillText(r.label,x,y+3*u);
+    g.font=`600 ${18*u}px "IBM Plex Mono",monospace`; g.fillStyle="rgba(255,255,255,.8)";
+    g.fillText(role==="pad"?"CHORD":"NOTE", x, y-62*u);
+  }
+  g.restore();
+}
+function roundRect(x,y,w,h,r){ g.beginPath(); g.moveTo(x+r,y); g.arcTo(x+w,y,x+w,y+h,r); g.arcTo(x+w,y+h,x,y+h,r); g.arcTo(x,y+h,x,y,r); g.arcTo(x,y,x+w,y,r); g.closePath(); }
+
+function wrapLines(text, maxW){
+  const words=text.split(/\s+/).filter(Boolean), lines=[]; let cur="";
+  for(const w of words){ const t=cur?cur+" "+w:w; if(g.measureText(t).width>maxW && cur){ lines.push(cur); cur=w; } else cur=t; }
+  if(cur) lines.push(cur); return lines;
+}
+function drawHud(W,H,u){
+  if(state.caption.trim()){
+    g.save(); g.font=`800 ${54*u}px "Bricolage Grotesque",sans-serif`; g.textAlign="center"; g.textBaseline="top";
+    const lines=wrapLines(state.caption.trim(), W*.84), top=state.format==="portrait"?H*.2:H*.08, lh=64*u;
+    g.lineJoin="round"; g.lineWidth=10*u; g.strokeStyle="rgba(0,0,0,.75)"; g.fillStyle="#fff";
+    lines.forEach((l,i)=>{ g.strokeText(l,W/2,top+i*lh); g.fillText(l,W/2,top+i*lh); });
+    g.restore();
+  }
+  if(state.tag){
+    g.save(); g.font=`800 ${40*u}px "Bricolage Grotesque",sans-serif`; g.textAlign="left"; g.textBaseline="alphabetic";
+    g.fillStyle="#fff"; g.fillText("TUIN", 36*u, H-44*u);
+    g.fillStyle=ORANGE; g.beginPath(); g.arc(36*u+g.measureText("TUIN").width+16*u, H-58*u, 9*u, 0, Math.PI*2); g.fill();
+    g.restore();
+  }
+  if(rec){ g.save(); g.fillStyle="#ff2d2d"; g.beginPath(); g.arc(W-44*u,46*u,12*u,0,Math.PI*2); g.fill();
+    g.font=`600 ${22*u}px "IBM Plex Mono",monospace`; g.textAlign="right"; g.fillStyle="#fff"; g.fillText("REC",W-66*u,54*u); g.restore(); }
+}
+function idleScreen(W,H,u){
+  g.save(); g.textAlign="center"; g.textBaseline="middle";
+  g.fillStyle="#fff"; g.font=`800 ${110*u}px "Bricolage Grotesque",sans-serif`; g.fillText("TUIN",W/2,H/2-60*u);
+  g.fillStyle=ORANGE; g.font=`800 ${56*u}px "Bricolage Grotesque",sans-serif`; g.fillText("Gesture Synth",W/2,H/2+30*u);
+  g.fillStyle="rgba(255,255,255,.6)"; g.font=`400 ${24*u}px "IBM Plex Mono",monospace`; g.fillText("Press Start camera & sound",W/2,H/2+110*u);
+  g.restore();
+}
+
+/* ---------- start ---------- */
+async function openCamera(deviceId){
+  if(video.srcObject) video.srcObject.getTracks().forEach(t=>t.stop());
+  const stream=await navigator.mediaDevices.getUserMedia({ video: deviceId?{deviceId:{exact:deviceId},width:1280,height:720}:{width:1280,height:720,facingMode:"user"}, audio:false });
+  video.srcObject=stream; await video.play();
+}
+async function listCameras(){
+  const devs=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==="videoinput");
+  const sel=$("camera"); sel.innerHTML="";
+  devs.forEach((d,i)=>{ const o=document.createElement("option"); o.value=d.deviceId; o.textContent=d.label||("Camera "+(i+1)); sel.appendChild(o); });
+  const cur=video.srcObject?.getVideoTracks()[0]?.getSettings().deviceId; if(cur) sel.value=cur;
+}
+$("camera").onchange=async e=>{ try{ await openCamera(e.target.value); }catch(err){ setStatus("Could not switch to that camera.", true); } };
+
+async function loadTracker(){
+  const { FilesetResolver, HandLandmarker } = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14");
+  const fileset = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
+  const opts = d => ({ baseOptions:{ modelAssetPath:"https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task", delegate:d }, runningMode:"VIDEO", numHands:2, minHandDetectionConfidence:.6, minHandPresenceConfidence:.5, minTrackingConfidence:.5 });
+  try{ return await HandLandmarker.createFromOptions(fileset, opts("GPU")); }
+  catch{ return await HandLandmarker.createFromOptions(fileset, opts("CPU")); }
+}
+
+$("startBtn").onclick = async ()=>{
+  $("startBtn").disabled=true;
+  if(!ac) initAudio(); else ac.resume();
+  $("recBtn").disabled=false;
+  try{
+    setStatus("Opening camera...");
+    await openCamera();
+    running=true; listCameras();
+    setStatus("Loading hand tracking...");
+    landmarker = await loadTracker();
+    setStatus("Ready. Hold up your hands.");
+    $("startBtn").textContent="Running";
+  }catch(err){
+    console.error(err);
+    const msg = err && err.name==="NotAllowedError" ? "Camera access was blocked. Allow it in the address bar, then reload."
+      : err && err.name==="NotFoundError" ? "No camera found. Plug in a webcam or use your iPhone as a camera, then reload."
+      : landmarker===null && running ? "Hand tracking could not load. Check your internet connection and reload."
+      : "Camera could not start. Keyboard play still works.";
+    setStatus(msg, true);
+    $("startBtn").textContent="Keyboard mode";
+  }
+};
+
+/* keyboard fallback */
+const PAD_KEYS={q:1,w:2,e:3,r:4,t:5};
+addEventListener("keydown",e=>{
+  if(e.target.tagName==="INPUT"||e.repeat) return;
+  if(!ac){ initAudio(); $("recBtn").disabled=false; }
+  const k=e.key.toLowerCase();
+  if(PAD_KEYS[k]) keyHeld.pad=PAD_KEYS[k];
+  if(k>="1"&&k<="5") keyHeld.lead=+k;
+});
+addEventListener("keyup",e=>{
+  const k=e.key.toLowerCase();
+  if(PAD_KEYS[k]&&keyHeld.pad===PAD_KEYS[k]) keyHeld.pad=0;
+  if(k>="1"&&k<="5"&&keyHeld.lead===+k) keyHeld.lead=0;
+  if(!keyHeld.pad && !running) roles.pad.miss=99;
+});
+
+/* ---------- recording ---------- */
+let rec=null, chunks=[];
+$("recBtn").onclick=()=>{
+  if(rec){ rec.stop(); return; }
+  const stream=canvas.captureStream(30);
+  recDest.stream.getAudioTracks().forEach(t=>stream.addTrack(t));
+  const types=["video/mp4;codecs=avc1.42E01E,mp4a.40.2","video/mp4","video/webm;codecs=vp9,opus","video/webm"];
+  const type=types.find(t=>window.MediaRecorder&&MediaRecorder.isTypeSupported(t))||"";
+  try{ rec=new MediaRecorder(stream, type?{mimeType:type,videoBitsPerSecond:12e6}:{}); }
+  catch(e){ setStatus("Recording is not supported in this browser.", true); return; }
+  chunks=[];
+  rec.ondataavailable=e=>e.data.size&&chunks.push(e.data);
+  rec.onstop=()=>{
+    const blob=new Blob(chunks,{type:rec.mimeType}), ext=rec.mimeType.includes("mp4")?"mp4":"webm";
+    const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
+    a.download=`tuin-gesture-synth-${new Date().toISOString().slice(0,19).replace(/[:T]/g,"-")}.${ext}`;
+    document.body.appendChild(a); a.click(); a.remove();
+    rec=null; $("recBtn").dataset.on="false"; $("recBtn").textContent="Record";
+    setStatus(`Saved a .${ext} file to your Downloads folder.`);
+  };
+  rec.start(250); $("recBtn").dataset.on="true"; $("recBtn").textContent="Stop and save";
+};
+
+document.fonts?.load('800 40px "Bricolage Grotesque"').finally(()=>{});
+sizeCanvas();
+frame();
+</script>
+</body>
+</html>
