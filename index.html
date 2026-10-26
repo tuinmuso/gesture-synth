@@ -147,7 +147,21 @@ function impulse(sec){
   for(let c=0;c<2;c++){const d=b.getChannelData(c);for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/len,3);}
   return b;
 }
+function unlockSpeaker(){
+  // iPhone: make web audio play even when the ring/silent switch is on silent
+  try{ if(navigator.audioSession) navigator.audioSession.type="playback"; }catch(e){}
+  try{
+    // older iOS fallback: a silent looping media element moves the page into the "playback" audio category
+    const sr=8000, n=sr/2, buf=new ArrayBuffer(44+n*2), v=new DataView(buf);
+    const w=(o,s)=>{for(let i=0;i<s.length;i++)v.setUint8(o+i,s.charCodeAt(i));};
+    w(0,"RIFF");v.setUint32(4,36+n*2,true);w(8,"WAVE");w(12,"fmt ");v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);
+    v.setUint32(24,sr,true);v.setUint32(28,sr*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);w(36,"data");v.setUint32(40,n*2,true);
+    const el=new Audio(URL.createObjectURL(new Blob([buf],{type:"audio/wav"})));
+    el.loop=true; el.setAttribute("playsinline",""); el.play().catch(()=>{});
+  }catch(e){}
+}
 function initAudio(){
+  unlockSpeaker();
   ac = new (window.AudioContext||window.webkitAudioContext)();
   comp = ac.createDynamicsCompressor(); comp.threshold.value=-14; comp.ratio.value=4;
   master = ac.createGain(); master.gain.value=state.vol;
