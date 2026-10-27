@@ -604,6 +604,8 @@ $("mic").onchange = async e => {
   if(e.target.checked){
     try{
       $("micStatus").textContent="Asking for the microphone...";
+      // iPhone: "playback" mode (used for silent-switch sound) blocks the mic, so switch to play-and-record first
+      try{ if(navigator.audioSession) navigator.audioSession.type="play-and-record"; }catch{}
       try{ micStream = await navigator.mediaDevices.getUserMedia({ audio:{ echoCancellation:true, noiseSuppression:false, autoGainControl:false } }); }
       catch(first){ if(first && first.name==="NotAllowedError") throw first; micStream = await navigator.mediaDevices.getUserMedia({ audio:true }); }
       if(ac.state!=="running") await ac.resume();
@@ -612,6 +614,7 @@ $("mic").onchange = async e => {
       $("micStatus").textContent="Mic on. Your voice goes into recordings.";
     }catch(err){
       e.target.checked=false;
+      try{ if(navigator.audioSession) navigator.audioSession.type="playback"; }catch{}
       console.error(err);
       const why = err && err.name==="NotAllowedError" ? "Microphone access was blocked. Allow it in Settings, then try again."
         : err && err.name==="NotReadableError" ? "Another app is using the microphone (screen recording with mic on, a call or Voice Memos). Stop that and try again."
@@ -622,6 +625,7 @@ $("mic").onchange = async e => {
     try{ micSrc && micSrc.disconnect(); vocalOut && vocalOut.disconnect(); vocalVerbRet && vocalVerbRet.disconnect(); monitorGain && monitorGain.disconnect(); }catch{}
     micStream && micStream.getTracks().forEach(t=>t.stop());
     micStream=micSrc=vocalOut=vocalVerbRet=monitorGain=null;
+    try{ if(navigator.audioSession) navigator.audioSession.type="playback"; }catch{}
     $("micStatus").textContent="";
   }
 };
@@ -670,7 +674,7 @@ $("recBtn").onclick=()=>{
 
 document.fonts?.load('800 40px "Bricolage Grotesque"').finally(()=>{});
 /* ---------- version + update check ---------- */
-const APP_VERSION = "v7 (27 Oct)";
+const APP_VERSION = "v8 (27 Oct)";
 $("version").textContent = "TUIN Gesture Synth " + APP_VERSION;
 async function checkUpdate(){
   if(location.protocol==="file:") return;
