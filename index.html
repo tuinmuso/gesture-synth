@@ -104,6 +104,8 @@ kbd{font:inherit;border:1px solid var(--line);border-radius:4px;padding:0 4px;co
     <div class="group">
       <div class="label">Vocal</div>
       <label class="check"><input type="checkbox" id="mic"> Record my voice</label>
+      <select id="micSelect" aria-label="Microphone"><option value="">Default microphone</option></select>
+      <label class="check"><input type="checkbox" id="bleed"> Reduce music bleed (only if not using headphones)</label>
       <div class="row" style="align-items:center"><span class="label" style="flex:0 0 auto">Vocal reverb</span><input type="range" id="vverb" min="0" max="100" value="40"></div>
       <div class="row" style="align-items:center"><span class="label" style="flex:0 0 auto">Vocal level</span><input type="range" id="vlevel" min="0" max="100" value="70"></div>
       <label class="check"><input type="checkbox" id="monitor"> Hear my voice (headphones only)</label>
@@ -165,7 +167,7 @@ function sizeCanvas(){ if(state.format==="portrait"){canvas.width=1080;canvas.he
 function setStatus(t, err){ $("status").textContent=t; $("status").classList.toggle("err", !!err); }
 
 /* ---------- audio ---------- */
-let ac, master, comp, verb, delay, leadOut, padFilter, padOut, recDest, noiseBuf, duck, bassOut, drumBus, drumVerb, drumRet;
+let ac, master, comp, verb, delay, leadOut, padFilter, padOut, recDest, noiseBuf, duck, bassOut, drumBus, drumVerb, drumRet, recBus, recLim;
 const spaceGain = () => Math.pow($("space").value/100, 1.3) * 1.6;
 $("space").oninput = () => { if(drumRet) drumRet.gain.setTargetAtTime(spaceGain(), ac.currentTime, .05); };
 function send(node, amt){ const s=ac.createGain(); s.gain.value=amt; node.connect(s).connect(drumVerb); }
@@ -194,7 +196,11 @@ function initAudio(){
   comp = ac.createDynamicsCompressor(); comp.threshold.value=-14; comp.ratio.value=4;
   master = ac.createGain(); master.gain.value=state.vol;
   master.connect(comp); comp.connect(ac.destination);
-  recDest = ac.createMediaStreamDestination(); comp.connect(recDest);
+  recDest = ac.createMediaStreamDestination();
+  // everything that gets recorded passes through a limiter so voice + music can't clip
+  recBus = ac.createGain(); recLim = ac.createDynamicsCompressor();
+  recLim.threshold.value=-4; recLim.knee.value=2; recLim.ratio.value=20; recLim.attack.value=.002; recLim.release.value=.12;
+  recBus.connect(recLim).connect(recDest); comp.connect(recBus);
   verb = ac.createConvolver(); verb.buffer = impulse(3);
   const verbRet = ac.createGain(); verbRet.gain.value=.5; verb.connect(verbRet).connect(master);
   delay = ac.createDelay(2); delay.delayTime.value = 60/state.bpm*.75;
@@ -578,14 +584,15 @@ $("startBtn").onclick = async ()=>{
 /* ---------- vocal mic: clean-up, compression and its own plate reverb, mixed into the recording ---------- */
 let micStream=null, micSrc=null, vocalOut=null, vocalVerbRet=null, monitorGain=null;
 const vverbGain = () => Math.pow($("vverb").value/100, 1.2) * 1.4;
-const vlevelGain = () => Math.pow($("vlevel").value/100, 1.5) * 2.2;
+const vlevelGain = () => Math.pow($("vlevel").value/100, 1.5) * 1.6;
 function buildVocalChain(){
   const hp=ac.createBiquadFilter(); hp.type="highpass"; hp.frequency.value=95;
   const mud=ac.createBiquadFilter(); mud.type="peaking"; mud.frequency.value=300; mud.Q.value=1; mud.gain.value=-3;
   const air=ac.createBiquadFilter(); air.type="highshelf"; air.frequency.value=9000; air.gain.value=3;
+  const presence=ac.createBiquadFilter(); presence.type="peaking"; presence.frequency.value=3500; presence.Q.value=.8; presence.gain.value=3;
   const vc=ac.createDynamicsCompressor(); vc.threshold.value=-22; vc.ratio.value=3.5; vc.attack.value=.005; vc.release.value=.12; vc.knee.value=6;
   vocalOut=ac.createGain(); vocalOut.gain.value=vlevelGain();
-  micSrc.connect(hp).connect(mud).connect(air).connect(vc).connect(vocalOut);
+  micSrc.connect(hp).connect(mud).connect(presence).connect(air).connect(vc).connect(vocalOut);
   // vocal plate: 40 ms pre-delay keeps the words clear before the tail blooms
   const pre=ac.createDelay(.2); pre.delayTime.value=.04;
   const plate=ac.createConvolver(); plate.buffer=impulse(2.6);
@@ -594,7 +601,7 @@ function buildVocalChain(){
   vocalVerbRet=ac.createGain(); vocalVerbRet.gain.value=vverbGain();
   vocalOut.connect(pre).connect(rhp).connect(plate).connect(rlp).connect(vocalVerbRet);
   // into the recording (not the speaker, so it can't feed back)
-  vocalOut.connect(recDest); vocalVerbRet.connect(recDest);
+  vocalOut.connect(recBus); vocalVerbRet.connect(recBus);
   // optional live monitoring for headphones
   monitorGain=ac.createGain(); monitorGain.gain.value=$("monitor").checked?1:0;
   vocalOut.connect(monitorGain); vocalVerbRet.connect(monitorGain); monitorGain.connect(ac.destination);
@@ -606,12 +613,17 @@ $("mic").onchange = async e => {
       $("micStatus").textContent="Asking for the microphone...";
       // iPhone: "playback" mode (used for silent-switch sound) blocks the mic, so switch to play-and-record first
       try{ if(navigator.audioSession) navigator.audioSession.type="play-and-record"; }catch{}
-      try{ micStream = await navigator.mediaDevices.getUserMedia({ audio:{ echoCancellation:true, noiseSuppression:false, autoGainControl:false } }); }
+      const ec = $("bleed").checked, dev = $("micSelect").value;
+      const want = { echoCancellation:ec, noiseSuppression:false, autoGainControl:false };
+      if(dev) want.deviceId = { exact: dev };
+      try{ micStream = await navigator.mediaDevices.getUserMedia({ audio: want }); }
       catch(first){ if(first && first.name==="NotAllowedError") throw first; micStream = await navigator.mediaDevices.getUserMedia({ audio:true }); }
       if(ac.state!=="running") await ac.resume();
       micSrc = ac.createMediaStreamSource(micStream);
       buildVocalChain();
-      $("micStatus").textContent="Mic on. Your voice goes into recordings.";
+      listMics();
+      const label = micStream.getAudioTracks()[0]?.label || "microphone";
+      $("micStatus").textContent = "Mic on (" + label + "). Your voice goes into recordings.";
     }catch(err){
       e.target.checked=false;
       try{ if(navigator.audioSession) navigator.audioSession.type="playback"; }catch{}
@@ -629,6 +641,17 @@ $("mic").onchange = async e => {
     $("micStatus").textContent="";
   }
 };
+async function listMics(){
+  try{
+    const mics=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==="audioinput");
+    const sel=$("micSelect"), keep=sel.value; sel.innerHTML='<option value="">Default microphone</option>';
+    mics.forEach((d,i)=>{ const o=document.createElement("option"); o.value=d.deviceId; o.textContent=d.label||("Microphone "+(i+1)); sel.appendChild(o); });
+    const cur=micStream?.getAudioTracks()[0]?.getSettings().deviceId; sel.value = keep || cur || "";
+  }catch{}
+}
+async function restartMic(){ if(!$("mic").checked) return; $("mic").checked=false; await $("mic").onchange({target:$("mic")}); $("mic").checked=true; await $("mic").onchange({target:$("mic")}); }
+$("micSelect").onchange = restartMic;
+$("bleed").onchange = restartMic;
 $("vverb").oninput = () => { if(vocalVerbRet) vocalVerbRet.gain.setTargetAtTime(vverbGain(), ac.currentTime, .05); };
 $("vlevel").oninput = () => { if(vocalOut) vocalOut.gain.setTargetAtTime(vlevelGain(), ac.currentTime, .05); };
 $("monitor").onchange = e => { if(monitorGain) monitorGain.gain.setTargetAtTime(e.target.checked?1:0, ac.currentTime, .03); };
@@ -674,7 +697,7 @@ $("recBtn").onclick=()=>{
 
 document.fonts?.load('800 40px "Bricolage Grotesque"').finally(()=>{});
 /* ---------- version + update check ---------- */
-const APP_VERSION = "v8 (27 Oct)";
+const APP_VERSION = "v9 (27 Oct)";
 $("version").textContent = "TUIN Gesture Synth " + APP_VERSION;
 async function checkUpdate(){
   if(location.protocol==="file:") return;
