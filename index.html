@@ -120,6 +120,8 @@ kbd{font:inherit;border:1px solid var(--line);border-radius:4px;padding:0 4px;co
     </div>
 
     <div class="keys">No camera? Test with the keyboard: hold <kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd><kbd>R</kbd><kbd>T</kbd> for chords and <kbd>1</kbd> to <kbd>5</kbd> for notes.</div>
+    <div class="keys" id="version"></div>
+    <button class="btn" id="updateBtn" hidden style="position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:20;box-shadow:0 6px 24px rgba(0,0,0,.6)">New version ready. Tap to update</button>
   </aside>
 </div>
 
@@ -667,6 +669,20 @@ $("recBtn").onclick=()=>{
 };
 
 document.fonts?.load('800 40px "Bricolage Grotesque"').finally(()=>{});
+/* ---------- version + update check ---------- */
+const APP_VERSION = "v7 (27 Oct)";
+$("version").textContent = "TUIN Gesture Synth " + APP_VERSION;
+async function checkUpdate(){
+  if(location.protocol==="file:") return;
+  try{
+    const r = await fetch("version.txt?t="+Date.now(), { cache:"no-store" });
+    if(r.ok && (await r.text()).trim() !== APP_VERSION) $("updateBtn").hidden = false;
+  }catch{}
+}
+$("updateBtn").onclick = () => { location.replace(location.pathname + "?v=" + Date.now()); };
+document.addEventListener("visibilitychange", () => { if(document.visibilityState==="visible") checkUpdate(); });
+checkUpdate();
+
 sizeCanvas();
 frame();
 </script>
