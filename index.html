@@ -97,6 +97,7 @@ kbd{font:inherit;border:1px solid var(--line);border-radius:4px;padding:0 4px;co
       <div class="label">Drums</div>
       <select id="drums" aria-label="Drum pattern"></select>
       <div class="row" style="align-items:center"><span class="label" style="flex:0 0 auto">BPM <span id="bpmVal">122</span></span><input type="range" id="bpm" min="70" max="180" value="122"></div>
+      <div class="row" style="align-items:center"><span class="label" style="flex:0 0 auto">Drum space</span><input type="range" id="space" min="0" max="100" value="55"></div>
       <div class="row" style="align-items:center"><span class="label" style="flex:0 0 auto">Volume</span><input type="range" id="vol" min="0" max="100" value="80"></div>
     </div>
 
@@ -153,7 +154,10 @@ function sizeCanvas(){ if(state.format==="portrait"){canvas.width=1080;canvas.he
 function setStatus(t, err){ $("status").textContent=t; $("status").classList.toggle("err", !!err); }
 
 /* ---------- audio ---------- */
-let ac, master, comp, verb, delay, leadOut, padFilter, padOut, recDest, noiseBuf, duck, bassOut, drumBus, drumVerb;
+let ac, master, comp, verb, delay, leadOut, padFilter, padOut, recDest, noiseBuf, duck, bassOut, drumBus, drumVerb, drumRet;
+const spaceGain = () => Math.pow($("space").value/100, 1.3) * 1.6;
+$("space").oninput = () => { if(drumRet) drumRet.gain.setTargetAtTime(spaceGain(), ac.currentTime, .05); };
+function send(node, amt){ const s=ac.createGain(); s.gain.value=amt; node.connect(s).connect(drumVerb); }
 const mtof = m => 440*Math.pow(2,(m-69)/12);
 function impulse(sec){
   const len=ac.sampleRate*sec, b=ac.createBuffer(2,len,ac.sampleRate);
@@ -197,7 +201,14 @@ function initAudio(){
   padFilter.connect(padOut); padOut.connect(duck);
   bassOut = ac.createGain(); bassOut.connect(duck);
   drumBus = ac.createGain(); drumBus.gain.value=.9; drumBus.connect(master);
-  const dv=ac.createGain(); dv.gain.value=.25; drumVerb=dv; dv.connect(verb);
+  // drum room: its own plate-style reverb with a 30 ms pre-delay, level set by the Drum space slider
+  drumVerb = ac.createGain();
+  const pre = ac.createDelay(.1); pre.delayTime.value=.03;
+  const room = ac.createConvolver(); room.buffer = impulse(2.2);
+  const rhp = ac.createBiquadFilter(); rhp.type="highpass"; rhp.frequency.value=250;
+  const rlp = ac.createBiquadFilter(); rlp.frequency.value=7000;
+  drumRet = ac.createGain(); drumRet.gain.value = spaceGain();
+  drumVerb.connect(pre).connect(rhp).connect(room).connect(rlp).connect(drumRet).connect(master);
   const ps=ac.createGain(); ps.gain.value=.7; padOut.connect(ps).connect(verb);
   noiseBuf = ac.createBuffer(1, ac.sampleRate, ac.sampleRate);
   const nd = noiseBuf.getChannelData(0); for(let i=0;i<nd.length;i++) nd[i]=Math.random()*2-1;
@@ -288,6 +299,8 @@ const GENRES = {
   afrobeats:{ name:"Afrobeats",     bpm:104, swing:56, kick:"soft", p:{ kick:"x..x....x..x....", rim:"...x..x...x.....", clap:"....x.......x...", shaker:"oooooooooooooooo" } },
   techno:   { name:"Techno",        bpm:130, swing:50, kick:"hard", p:{ kick:"x...x...x...x...", ohat:"..x...x...x...x.", hat:"oooooooooooooooo", clap:"....x.......x..." } },
   disco:    { name:"Disco / funk",  bpm:118, swing:52, kick:"house", p:{ kick:"x...x...x...x...", snare:"....x.......x...", ohat:"..x...x...x...x.", hat:"xo.oxo.oxo.oxo.o" } },
+  stomp:    { name:"Stomp & clap (half-time)", bpm:130, swing:50, kick:"stomp", p:{ kick:"x.....x..x......", snare:"........x.......", clap:"........x.......", hat:"o...o...o...o...", tom:"..............o." } },
+  ballad:   { name:"Half-time ballad", bpm:130, swing:52, kick:"soft", p:{ kick:"x.........x.....", snare:"........x.......", rim:"....o.......o...", shaker:"o.o.o.o.o.o.o.o." } },
   pop:      { name:"Pop / rock",    bpm:110, swing:50, kick:"house", p:{ kick:"x.......x.x.....", snare:"....x.......x...", hat:"x.x.x.x.x.x.x.x." } },
   boombap:  { name:"Hip hop (boom bap)", bpm:90, swing:60, kick:"house", p:{ kick:"x......x..x.....", snare:"....x.......x...", hat:"x.x.x.x.x.x.x.x." } },
   trap:     { name:"Trap",          bpm:140, swing:50, kick:"808", p:{ k808:"x......x..x.....", snare:"........x.......", clap:"........x.......", hat:"x.x.x.xrx.x.xtx." } },
@@ -297,7 +310,7 @@ const GENRES = {
 Object.entries(GENRES).forEach(([k,g])=>{ const o=document.createElement("option"); o.value=k; o.textContent=g.name+(g.bpm?`  (${g.bpm} BPM)`:""); $("drums").appendChild(o); });
 $("drums").onchange = e => { state.drums=e.target.value; const g=GENRES[state.drums]; if(g.bpm) setBpm(g.bpm); };
 
-const KICKS = { soft:{f0:140,f1:46,tau:.035,dec:.3,click:.04,drive:1.5}, house:{f0:155,f1:48,tau:.03,dec:.32,click:.1,drive:2}, hard:{f0:210,f1:50,tau:.02,dec:.36,click:.25,drive:3.5} };
+const KICKS = { soft:{f0:140,f1:46,tau:.035,dec:.3,click:.04,drive:1.5}, house:{f0:155,f1:48,tau:.03,dec:.32,click:.1,drive:2}, hard:{f0:210,f1:50,tau:.02,dec:.36,click:.25,drive:3.5}, stomp:{f0:120,f1:44,tau:.05,dec:.55,click:.08,drive:1.6} };
 function rootMidi(lo){ // current chord root (or key root), placed in the octave starting at `lo`
   const r = roles.pad.count>0 ? chordFor(roles.pad.count).notes[1] : 48+state.key;
   return lo + ((r-lo)%12+12)%12;
@@ -307,25 +320,25 @@ function env(gn,t,v,dec){ gn.gain.setValueAtTime(v,t); gn.gain.exponentialRampTo
 function duckAt(t){ duck.gain.cancelScheduledValues(t); duck.gain.setValueAtTime(.42,t); duck.gain.setTargetAtTime(1,t+.01,.06); }
 const INST = {
   kick(t,v,G){ const k=KICKS[G.kick]||KICKS.house, o=ac.createOscillator(), g1=ac.createGain(), sh=ac.createWaveShaper(); sh.curve=driveCurve(k.drive);
-    o.frequency.setValueAtTime(k.f0,t); o.frequency.setTargetAtTime(k.f1,t,k.tau); env(g1,t,.95*v,k.dec); o.connect(g1).connect(sh).connect(drumBus); o.start(t); o.stop(t+k.dec+.05);
+    o.frequency.setValueAtTime(k.f0,t); o.frequency.setTargetAtTime(k.f1,t,k.tau); env(g1,t,.95*v,k.dec); o.connect(g1).connect(sh).connect(drumBus); send(sh,.08); o.start(t); o.stop(t+k.dec+.05);
     const c=noise(t,.01), hp=ac.createBiquadFilter(), cg=ac.createGain(); hp.type="highpass"; hp.frequency.value=3000; env(cg,t,k.click*v,.01); c.connect(hp).connect(cg).connect(drumBus);
     duckAt(t); },
   k808(t,v){ const f=mtof(rootMidi(31)), o=ac.createOscillator(), g1=ac.createGain(), sh=ac.createWaveShaper(); sh.curve=driveCurve(2.2);
     o.frequency.setValueAtTime(f*2.2,t); o.frequency.exponentialRampToValueAtTime(f,t+.04); g1.gain.setValueAtTime(.9*v,t); g1.gain.setTargetAtTime(0,t+.15,.35);
     o.connect(g1).connect(sh).connect(drumBus); o.start(t); o.stop(t+1.6); duckAt(t); },
-  snare(t,v){ const n=noise(t,.2), bp=ac.createBiquadFilter(), g1=ac.createGain(); bp.type="bandpass"; bp.frequency.value=1800; bp.Q.value=.7; env(g1,t,.5*v,.17); n.connect(bp).connect(g1).connect(drumBus);
-    const o=ac.createOscillator(), g2=ac.createGain(); o.type="triangle"; o.frequency.setValueAtTime(200,t); o.frequency.exponentialRampToValueAtTime(160,t+.05); env(g2,t,.35*v,.09); o.connect(g2).connect(drumBus); o.start(t); o.stop(t+.12); },
-  clap(t,v,G){ t+=G.clapLate||0; const bp=ac.createBiquadFilter(), g1=ac.createGain(); bp.type="bandpass"; bp.frequency.value=1500; bp.Q.value=.9; bp.connect(g1); g1.connect(drumBus); g1.connect(drumVerb);
+  snare(t,v){ const n=noise(t,.35), bp=ac.createBiquadFilter(), g1=ac.createGain(); bp.type="bandpass"; bp.frequency.value=1700; bp.Q.value=.6; env(g1,t,.5*v,.28); n.connect(bp).connect(g1).connect(drumBus); send(g1,.75);
+    const o=ac.createOscillator(), g2=ac.createGain(); o.type="triangle"; o.frequency.setValueAtTime(190,t); o.frequency.exponentialRampToValueAtTime(150,t+.06); env(g2,t,.4*v,.13); o.connect(g2).connect(drumBus); send(g2,.4); o.start(t); o.stop(t+.12); },
+  clap(t,v,G){ t+=G.clapLate||0; const bp=ac.createBiquadFilter(), g1=ac.createGain(); bp.type="bandpass"; bp.frequency.value=1500; bp.Q.value=.9; bp.connect(g1); g1.connect(drumBus); send(g1,.8);
     g1.gain.setValueAtTime(0,t); [0,.011,.022].forEach(d=>{ g1.gain.setValueAtTime(.42*v,t+d); g1.gain.exponentialRampToValueAtTime(.05,t+d+.009); });
     g1.gain.setValueAtTime(.32*v,t+.031); g1.gain.exponentialRampToValueAtTime(.0008,t+.2); noise(t,.22).connect(bp); },
   hat(t,v){ const n=noise(t,.06), hp=ac.createBiquadFilter(), g1=ac.createGain(), p=ac.createStereoPanner(); hp.type="highpass"; hp.frequency.value=8500; p.pan.value=(Math.random()-.5)*.3;
-    env(g1,t,.16*v,.045); n.connect(hp).connect(g1).connect(p).connect(drumBus); },
-  ohat(t,v){ const n=noise(t,.3), hp=ac.createBiquadFilter(), g1=ac.createGain(); hp.type="highpass"; hp.frequency.value=7000; env(g1,t,.14*v,.26); n.connect(hp).connect(g1).connect(drumBus); },
+    env(g1,t,.16*v,.045); n.connect(hp).connect(g1).connect(p).connect(drumBus); send(g1,.08); },
+  ohat(t,v){ const n=noise(t,.3), hp=ac.createBiquadFilter(), g1=ac.createGain(); hp.type="highpass"; hp.frequency.value=7000; env(g1,t,.14*v,.26); n.connect(hp).connect(g1).connect(drumBus); send(g1,.15); },
   shaker(t,v){ const n=noise(t,.07), bp=ac.createBiquadFilter(), g1=ac.createGain(), p=ac.createStereoPanner(); bp.type="bandpass"; bp.frequency.value=6500; bp.Q.value=1.2; p.pan.value=(Math.random()-.5)*.6;
-    env(g1,t,(.05+Math.random()*.06)*v*1.6,.055); n.connect(bp).connect(g1).connect(p).connect(drumBus); },
-  rim(t,v){ const n=noise(t,.04), bp=ac.createBiquadFilter(), g1=ac.createGain(); bp.type="bandpass"; bp.frequency.value=2200; bp.Q.value=4; env(g1,t,.5*v,.035); n.connect(bp).connect(g1).connect(drumBus);
+    env(g1,t,(.05+Math.random()*.06)*v*1.6,.055); n.connect(bp).connect(g1).connect(p).connect(drumBus); send(g1,.1); },
+  rim(t,v){ const n=noise(t,.04), bp=ac.createBiquadFilter(), g1=ac.createGain(); bp.type="bandpass"; bp.frequency.value=2200; bp.Q.value=4; env(g1,t,.5*v,.035); n.connect(bp).connect(g1).connect(drumBus); send(g1,.35);
     const o=ac.createOscillator(), g2=ac.createGain(); o.frequency.value=850; env(g2,t,.25*v,.03); o.connect(g2).connect(drumBus); o.start(t); o.stop(t+.05); },
-  tom(t,v){ const o=ac.createOscillator(), g1=ac.createGain(); o.frequency.setValueAtTime(240,t); o.frequency.exponentialRampToValueAtTime(150,t+.2); env(g1,t,.45*v,.3); o.connect(g1).connect(drumBus); o.start(t); o.stop(t+.35); },
+  tom(t,v){ const o=ac.createOscillator(), g1=ac.createGain(); o.frequency.setValueAtTime(240,t); o.frequency.exponentialRampToValueAtTime(150,t+.2); env(g1,t,.45*v,.3); o.connect(g1).connect(drumBus); send(g1,.4); o.start(t); o.stop(t+.35); },
   log(t,v){ const f=mtof(rootMidi(38)), o=ac.createOscillator(), g1=ac.createGain(), lp=ac.createBiquadFilter(), sh=ac.createWaveShaper(); sh.curve=driveCurve(4); lp.frequency.value=900;
     o.frequency.setValueAtTime(f*1.9,t); o.frequency.exponentialRampToValueAtTime(f,t+.05); env(g1,t,.75*v,.5); o.connect(g1).connect(sh).connect(lp).connect(drumBus); o.start(t); o.stop(t+.55); duckAt(t); }
 };
