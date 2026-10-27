@@ -2,8 +2,16 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>TUIN Gesture Synth</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Gesture Synth">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0a0a0a">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&family=IBM+Plex+Mono:wght@400;600&display=swap">
@@ -19,7 +27,7 @@
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
 body{background:var(--bg);color:var(--fg);font:15px/1.5 var(--display);}
-.app{min-height:100%;display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:24px;padding:20px max(16px,env(safe-area-inset-right)) 20px max(16px,env(safe-area-inset-left))}
+.app{min-height:100%;display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:24px;padding:calc(20px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right)) calc(20px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left))}
 .stage{display:flex;align-items:center;justify-content:center;min-width:0}
 canvas{display:block;max-width:100%;max-height:calc(100vh - 40px);width:auto;height:auto;border-radius:14px;background:#000;border:1px solid var(--line)}
 .rail{display:flex;flex-direction:column;gap:18px;min-width:0}
