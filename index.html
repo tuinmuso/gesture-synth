@@ -600,6 +600,8 @@ function buildVocalChain(){
   const presence=ac.createBiquadFilter(); presence.type="peaking"; presence.frequency.value=3500; presence.Q.value=.8; presence.gain.value=3;
   const vc=ac.createDynamicsCompressor(); vc.threshold.value=-26; vc.ratio.value=4; vc.attack.value=.004; vc.release.value=.12; vc.knee.value=8;
   micGain=ac.createGain(); micGain.gain.value=vlevelGain();
+  // fold interface inputs (e.g. voice on input 2 only) into one centred mono vocal
+  micGain.channelCount=1; micGain.channelCountMode="explicit"; micGain.channelInterpretation="speakers";
   micAn=ac.createAnalyser(); micAn.fftSize=1024; micBuf=new Float32Array(micAn.fftSize);
   vocalOut=ac.createGain(); vocalOut.gain.value=1.6; // makeup after compression
   micSrc.connect(micGain).connect(hp).connect(mud).connect(presence).connect(air).connect(vc).connect(vocalOut);
@@ -719,7 +721,7 @@ $("recBtn").onclick=()=>{
 
 document.fonts?.load('800 40px "Bricolage Grotesque"').finally(()=>{});
 /* ---------- version + update check ---------- */
-const APP_VERSION = "v10 (27 Oct)";
+const APP_VERSION = "v11 (27 Oct)";
 $("version").textContent = "TUIN Gesture Synth " + APP_VERSION;
 async function checkUpdate(){
   if(location.protocol==="file:") return;
