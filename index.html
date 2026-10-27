@@ -101,6 +101,10 @@ kbd{font:inherit;border:1px solid var(--line);border-radius:4px;padding:0 4px;co
       <select id="drums" aria-label="Drum pattern"></select>
       <div class="row" style="align-items:center"><span class="label" style="flex:0 0 auto">BPM <span id="bpmVal">122</span></span><input type="range" id="bpm" min="70" max="180" value="122"></div>
       <div class="row" style="align-items:center"><span class="label" style="flex:0 0 auto">Drum space</span><input type="range" id="space" min="0" max="100" value="55"></div>
+      <div class="label">Mix</div>
+      <div class="row" style="align-items:center"><span class="label" style="flex:0 0 70px">Chords</span><input type="range" id="mixPad" min="0" max="100" value="65"></div>
+      <div class="row" style="align-items:center"><span class="label" style="flex:0 0 70px">Notes</span><input type="range" id="mixLead" min="0" max="100" value="70"></div>
+      <div class="row" style="align-items:center"><span class="label" style="flex:0 0 70px">Drums</span><input type="range" id="mixDrums" min="0" max="100" value="70"></div>
       <div class="row" style="align-items:center"><span class="label" style="flex:0 0 auto">Volume</span><input type="range" id="vol" min="0" max="100" value="80"></div>
     </div>
 
@@ -112,7 +116,7 @@ kbd{font:inherit;border:1px solid var(--line);border-radius:4px;padding:0 4px;co
       <div class="row" style="align-items:center"><span class="label" style="flex:0 0 auto">Vocal reverb</span><input type="range" id="vverb" min="0" max="100" value="40"></div>
       <div class="row" style="align-items:center"><span class="label" style="flex:0 0 auto">Mic boost</span><input type="range" id="vlevel" min="0" max="100" value="70"></div>
       <div class="meter" aria-hidden="true"><div id="micMeter"></div></div>
-      <label class="check"><input type="checkbox" id="vduck" checked> Lower the music while I sing</label>
+      <label class="check"><input type="checkbox" id="vcarve" checked> Make room for my voice in the music</label>
       <label class="check"><input type="checkbox" id="monitor"> Hear my voice (headphones only)</label>
       <div class="status" id="micStatus"></div>
     </div>
@@ -172,7 +176,15 @@ function sizeCanvas(){ if(state.format==="portrait"){canvas.width=1080;canvas.he
 function setStatus(t, err){ $("status").textContent=t; $("status").classList.toggle("err", !!err); }
 
 /* ---------- audio ---------- */
-let ac, master, comp, verb, delay, leadOut, padFilter, padOut, recDest, noiseBuf, duck, bassOut, drumBus, drumVerb, drumRet, recBus, recLim, musicDuck;
+let ac, master, comp, verb, delay, leadOut, padFilter, padOut, recDest, noiseBuf, duck, bassOut, drumBus, drumVerb, drumRet, recBus, recLim, musicDuck, carveMid, carveLow;
+const fader = id => Math.pow($(id).value/100, 2) * 2; // 70 on the slider is roughly unity
+function applyMix(){ if(!ac) return; const t=ac.currentTime;
+  padOut.gain.setTargetAtTime(fader("mixPad"), t, .05); leadOut.gain.setTargetAtTime(fader("mixLead"), t, .05);
+  bassOut.gain.setTargetAtTime(fader("mixLead")*.8, t, .05); drumBus.gain.setTargetAtTime(fader("mixDrums")*.9, t, .05); }
+function applyCarve(){ if(!carveMid) return; const on = !!micSrc && $("vcarve").checked, t=ac.currentTime;
+  carveMid.gain.setTargetAtTime(on?-4:0, t, .1); carveLow.gain.setTargetAtTime(on?-2:0, t, .1); }
+["mixPad","mixLead","mixDrums"].forEach(id=>$(id).oninput=applyMix);
+$("vcarve").onchange = applyCarve;
 const spaceGain = () => Math.pow($("space").value/100, 1.3) * 1.6;
 $("space").oninput = () => { if(drumRet) drumRet.gain.setTargetAtTime(spaceGain(), ac.currentTime, .05); };
 function send(node, amt){ const s=ac.createGain(); s.gain.value=amt; node.connect(s).connect(drumVerb); }
@@ -201,7 +213,10 @@ function initAudio(){
   comp = ac.createDynamicsCompressor(); comp.threshold.value=-14; comp.ratio.value=4;
   master = ac.createGain(); master.gain.value=state.vol;
   musicDuck = ac.createGain();
-  master.connect(comp); comp.connect(musicDuck); musicDuck.connect(ac.destination);
+  // "make room for my voice": a fixed dip where the voice lives, plus a little less low-mid build-up; flat until the mic is on
+  carveMid = ac.createBiquadFilter(); carveMid.type="peaking"; carveMid.frequency.value=2600; carveMid.Q.value=.9; carveMid.gain.value=0;
+  carveLow = ac.createBiquadFilter(); carveLow.type="peaking"; carveLow.frequency.value=350; carveLow.Q.value=1; carveLow.gain.value=0;
+  master.connect(comp); comp.connect(carveLow).connect(carveMid).connect(musicDuck); musicDuck.connect(ac.destination);
   recDest = ac.createMediaStreamDestination();
   // everything that gets recorded passes through a limiter so voice + music can't clip
   recBus = ac.createGain(); recLim = ac.createDynamicsCompressor();
@@ -224,6 +239,7 @@ function initAudio(){
   padFilter.connect(padOut); padOut.connect(duck);
   bassOut = ac.createGain(); bassOut.connect(duck);
   drumBus = ac.createGain(); drumBus.gain.value=.9; drumBus.connect(master);
+  setTimeout(applyMix, 0);
   // drum room: its own plate-style reverb with a 30 ms pre-delay, level set by the Drum space slider
   drumVerb = ac.createGain();
   const pre = ac.createDelay(.1); pre.delayTime.value=.03;
@@ -633,7 +649,7 @@ $("mic").onchange = async e => {
       catch(first){ if(first && first.name==="NotAllowedError") throw first; micStream = await navigator.mediaDevices.getUserMedia({ audio:true }); }
       if(ac.state!=="running") await ac.resume();
       micSrc = ac.createMediaStreamSource(micStream);
-      buildVocalChain();
+      buildVocalChain(); applyCarve();
       listMics();
       const label = micStream.getAudioTracks()[0]?.label || "microphone";
       $("micStatus").textContent = "Mic on (" + label + "). Your voice goes into recordings.";
@@ -650,6 +666,7 @@ $("mic").onchange = async e => {
     try{ micSrc && micSrc.disconnect(); micGain && micGain.disconnect(); micGain=null; micAn=null; vocalOut && vocalOut.disconnect(); vocalVerbRet && vocalVerbRet.disconnect(); monitorGain && monitorGain.disconnect(); }catch{}
     micStream && micStream.getTracks().forEach(t=>t.stop());
     micStream=micSrc=vocalOut=vocalVerbRet=monitorGain=null;
+    applyCarve();
     try{ if(navigator.audioSession) navigator.audioSession.type="playback"; }catch{}
     $("micStatus").textContent="";
   }
@@ -669,14 +686,12 @@ $("vverb").oninput = () => { if(vocalVerbRet) vocalVerbRet.gain.setTargetAtTime(
 $("vlevel").oninput = () => { if(micGain) micGain.gain.setTargetAtTime(vlevelGain(), ac.currentTime, .05); };
 // mic meter + duck the music while singing (runs from the draw loop)
 function vocalTick(){
-  if(!micAn){ $("micMeter").style.width="0"; if(musicDuck && singing){ singing=0; musicDuck.gain.setTargetAtTime(1, ac.currentTime, .3); } return; }
+  if(!micAn){ $("micMeter").style.width="0"; return; }
   micAn.getFloatTimeDomainData(micBuf);
   let sum=0; for(let i=0;i<micBuf.length;i++) sum+=micBuf[i]*micBuf[i];
   const db = 20*Math.log10(Math.sqrt(sum/micBuf.length)+1e-9);
   const pct = Math.max(0, Math.min(100, (db+60)/60*100));
   const m=$("micMeter"); m.style.width=pct+"%"; m.classList.toggle("hot", db>-6);
-  const on = $("vduck").checked && db > -34;
-  if(on !== !!singing){ singing = on?1:0; musicDuck.gain.setTargetAtTime(on?.5:1, ac.currentTime, on?.04:.35); }
 }
 $("monitor").onchange = e => { if(monitorGain) monitorGain.gain.setTargetAtTime(e.target.checked?1:0, ac.currentTime, .03); };
 
@@ -721,7 +736,7 @@ $("recBtn").onclick=()=>{
 
 document.fonts?.load('800 40px "Bricolage Grotesque"').finally(()=>{});
 /* ---------- version + update check ---------- */
-const APP_VERSION = "v11 (27 Oct)";
+const APP_VERSION = "v12 (27 Oct)";
 $("version").textContent = "TUIN Gesture Synth " + APP_VERSION;
 async function checkUpdate(){
   if(location.protocol==="file:") return;
