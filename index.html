@@ -309,7 +309,7 @@ const GENRES = {
   techno:   { name:"Techno",        bpm:130, swing:50, kick:"hard", p:{ kick:"x...x...x...x...", ohat:"..x...x...x...x.", hat:"oooooooooooooooo", clap:"....x.......x..." } },
   disco:    { name:"Disco / funk",  bpm:118, swing:52, kick:"house", p:{ kick:"x...x...x...x...", snare:"....x.......x...", ohat:"..x...x...x...x.", hat:"xo.oxo.oxo.oxo.o" } },
   stomp:    { name:"Stomp & clap (half-time)", bpm:130, swing:50, kick:"stomp", p:{ kick:"x.....x..x......", snare:"........x.......", clap:"........x.......", hat:"o...o...o...o...", tom:"..............o." } },
-  ballad:   { name:"Half-time ballad", bpm:130, swing:52, kick:"soft", p:{ kick:"x.........x.....", snare:"........x.......", rim:"....o.......o...", shaker:"o.o.o.o.o.o.o.o." } },
+  ballad:   { name:"Half-time ballad", bpm:130, swing:52, kick:"soft", p:{ kick:"x.........x.....", snare:"........x.......", shaker:"o.o.o.o.o.o.o.o." } },
   pop:      { name:"Pop / rock",    bpm:110, swing:50, kick:"house", p:{ kick:"x.......x.x.....", snare:"....x.......x...", hat:"x.x.x.x.x.x.x.x." } },
   boombap:  { name:"Hip hop (boom bap)", bpm:90, swing:60, kick:"house", p:{ kick:"x......x..x.....", snare:"....x.......x...", hat:"x.x.x.x.x.x.x.x." } },
   trap:     { name:"Trap",          bpm:140, swing:50, kick:"808", p:{ k808:"x......x..x.....", snare:"........x.......", clap:"........x.......", hat:"x.x.x.xrx.x.xtx." } },
@@ -345,8 +345,7 @@ const INST = {
   ohat(t,v){ const n=noise(t,.3), hp=ac.createBiquadFilter(), g1=ac.createGain(); hp.type="highpass"; hp.frequency.value=7000; env(g1,t,.14*v,.26); n.connect(hp).connect(g1).connect(drumBus); send(g1,.15); },
   shaker(t,v){ const n=noise(t,.07), bp=ac.createBiquadFilter(), g1=ac.createGain(), p=ac.createStereoPanner(); bp.type="bandpass"; bp.frequency.value=6500; bp.Q.value=1.2; p.pan.value=(Math.random()-.5)*.6;
     env(g1,t,(.05+Math.random()*.06)*v*1.6,.055); n.connect(bp).connect(g1).connect(p).connect(drumBus); send(g1,.1); },
-  rim(t,v){ const n=noise(t,.04), bp=ac.createBiquadFilter(), g1=ac.createGain(); bp.type="bandpass"; bp.frequency.value=2200; bp.Q.value=4; env(g1,t,.5*v,.035); n.connect(bp).connect(g1).connect(drumBus); send(g1,.35);
-    const o=ac.createOscillator(), g2=ac.createGain(); o.frequency.value=850; env(g2,t,.25*v,.03); o.connect(g2).connect(drumBus); o.start(t); o.stop(t+.05); },
+  rim(t,v){ const n=noise(t,.04), bp=ac.createBiquadFilter(), g1=ac.createGain(); bp.type="bandpass"; bp.frequency.value=2200; bp.Q.value=4; env(g1,t,.5*v,.035); n.connect(bp).connect(g1).connect(drumBus); send(g1,.35); },
   tom(t,v){ const o=ac.createOscillator(), g1=ac.createGain(); o.frequency.setValueAtTime(240,t); o.frequency.exponentialRampToValueAtTime(150,t+.2); env(g1,t,.45*v,.3); o.connect(g1).connect(drumBus); send(g1,.4); o.start(t); o.stop(t+.35); },
   log(t,v){ const f=mtof(rootMidi(38)), o=ac.createOscillator(), g1=ac.createGain(), lp=ac.createBiquadFilter(), sh=ac.createWaveShaper(); sh.curve=driveCurve(4); lp.frequency.value=900;
     o.frequency.setValueAtTime(f*1.9,t); o.frequency.exponentialRampToValueAtTime(f,t+.05); env(g1,t,.75*v,.5); o.connect(g1).connect(sh).connect(lp).connect(drumBus); o.start(t); o.stop(t+.55); duckAt(t); }
@@ -603,13 +602,19 @@ $("mic").onchange = async e => {
   if(e.target.checked){
     try{
       $("micStatus").textContent="Asking for the microphone...";
-      micStream = await navigator.mediaDevices.getUserMedia({ audio:{ echoCancellation:true, noiseSuppression:false, autoGainControl:false } });
+      try{ micStream = await navigator.mediaDevices.getUserMedia({ audio:{ echoCancellation:true, noiseSuppression:false, autoGainControl:false } }); }
+      catch(first){ if(first && first.name==="NotAllowedError") throw first; micStream = await navigator.mediaDevices.getUserMedia({ audio:true }); }
+      if(ac.state!=="running") await ac.resume();
       micSrc = ac.createMediaStreamSource(micStream);
       buildVocalChain();
       $("micStatus").textContent="Mic on. Your voice goes into recordings.";
     }catch(err){
       e.target.checked=false;
-      $("micStatus").textContent = err && err.name==="NotAllowedError" ? "Microphone access was blocked. Allow it in Settings, then try again." : "The microphone could not start.";
+      console.error(err);
+      const why = err && err.name==="NotAllowedError" ? "Microphone access was blocked. Allow it in Settings, then try again."
+        : err && err.name==="NotReadableError" ? "Another app is using the microphone (screen recording with mic on, a call or Voice Memos). Stop that and try again."
+        : "The microphone could not start (" + ((err && (err.name+": "+err.message)) || "unknown error") + ").";
+      $("micStatus").textContent = why;
     }
   } else {
     try{ micSrc && micSrc.disconnect(); vocalOut && vocalOut.disconnect(); vocalVerbRet && vocalVerbRet.disconnect(); monitorGain && monitorGain.disconnect(); }catch{}
