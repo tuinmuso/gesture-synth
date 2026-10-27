@@ -84,6 +84,8 @@ kbd{font:inherit;border:1px solid var(--line);border-radius:4px;padding:0 4px;co
       </div>
       <div class="label">Right hand</div>
       <div class="seg" id="sound"><button data-v="pluck" aria-pressed="true">Pluck</button><button data-v="keys" aria-pressed="false">Keys</button><button data-v="glass" aria-pressed="false">Glass</button><button data-v="bass" aria-pressed="false">Bass</button></div>
+      <div class="label">Bass rhythm</div>
+      <div class="seg" id="bassRhythm"><button data-v="eighths" aria-pressed="false">8ths</button><button data-v="sixteenths" aria-pressed="true">16ths</button><button data-v="offbeat" aria-pressed="false">Offbeat</button><button data-v="gallop" aria-pressed="false">Gallop</button><button data-v="long" aria-pressed="false">Long</button></div>
       <div class="label">Drums</div>
       <select id="drums" aria-label="Drum pattern"></select>
       <div class="row" style="align-items:center"><span class="label" style="flex:0 0 auto">BPM <span id="bpmVal">122</span></span><input type="range" id="bpm" min="70" max="180" value="122"></div>
@@ -114,7 +116,7 @@ const CHORD_DEG = { major:[0,4,5,3,1], minor:[0,5,2,6,3] };
 const ORANGE = "#ff6a13";
 const HAND_LINKS = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
 
-const state = { key:0, scale:"major", sound:"pluck", drums:"off", bpm:122, vol:.8, format:"portrait", caption:"", tag:true };
+const state = { key:0, scale:"major", sound:"pluck", bassRhythm:"sixteenths", drums:"off", bpm:122, vol:.8, format:"portrait", caption:"", tag:true };
 const $ = id => document.getElementById(id);
 const canvas = $("stage"), g = canvas.getContext("2d"), video = $("video");
 
@@ -131,6 +133,7 @@ function seg(id, prop, after){
 seg("scale","scale",()=>refreshVoices());
 seg("sound","sound",()=>{ if(ac){ leadOff(); bassOff(); } refreshVoices(); });
 seg("format","format",()=>sizeCanvas());
+seg("bassRhythm","bassRhythm",()=>{ if(ac && bassVoice){ const n=roles.lead.count; bassOff(); roles.lead.count=-1; commit("lead",n); } });
 function setBpm(b){ state.bpm=b; $("bpm").value=b; $("bpmVal").textContent=b; if(delay) delay.delayTime.setTargetAtTime(60/b*.75, ac.currentTime, .05); }
 $("bpm").oninput = e => setBpm(+e.target.value);
 $("vol").oninput = e => { state.vol=e.target.value/100; if(master) master.gain.setTargetAtTime(state.vol, ac.currentTime, .05); };
@@ -233,11 +236,20 @@ function padOff(){ if(padVoice){ padVoice.release(1.6); padVoice=null; } }
 let bassVoice=null;
 const curves={};
 function driveCurve(k){ if(curves[k]) return curves[k]; const n=1024,c=new Float32Array(n); for(let i=0;i<n;i++){const x=i/(n-1)*2-1;c[i]=Math.tanh(k*x)/Math.tanh(k);} return curves[k]=c; }
+// pulse patterns over 16 steps (x = pulse, o = softer pulse); "long" = one held note
+const BASS_RHYTHM = { eighths:"x.x.x.x.x.x.x.x.", sixteenths:"xoxoxoxoxoxoxoxo", offbeat:"..x...x...x...x.", gallop:"x.xox.xox.xox.xo" };
+const BASS_PEAK=.34;
+function bassPulse(t, v, sd){
+  const b=bassVoice; if(!b) return;
+  const g=b.out.gain, peak=BASS_PEAK*v;
+  g.cancelScheduledValues(t); g.setValueAtTime(0,t); g.linearRampToValueAtTime(peak,t+.004); g.setTargetAtTime(0,t+.004,sd*.38);
+  b.lp.frequency.cancelScheduledValues(t); b.lp.frequency.setValueAtTime(700+500*v,t); b.lp.frequency.setTargetAtTime(380,t,sd*.45);
+}
 function bassOn(midi){
-  const t=ac.currentTime, f=mtof(midi);
+  const t=ac.currentTime, f=mtof(midi), pulsing=state.bassRhythm!=="long";
   if(bassVoice){
-    bassVoice.oscs.forEach((o,i)=>o.frequency.setTargetAtTime(f*bassVoice.mult[i], t, .03)); // ~90 ms glide
-    bassVoice.out.gain.cancelScheduledValues(t); bassVoice.out.gain.setTargetAtTime(.34, t, .02);
+    bassVoice.oscs.forEach((o,i)=>o.frequency.setTargetAtTime(f*bassVoice.mult[i], t, pulsing?.008:.03)); // pulses jump, long notes glide ~90 ms
+    if(!pulsing){ bassVoice.out.gain.cancelScheduledValues(t); bassVoice.out.gain.setTargetAtTime(BASS_PEAK, t, .02); }
     return;
   }
   const out=ac.createGain(), lp=ac.createBiquadFilter(), sat=ac.createWaveShaper();
@@ -245,8 +257,9 @@ function bassOn(midi){
   const mult=[1,.5,1], det=[-8,0,8], lvl=[.5,.6,.35], oscs=[];
   mult.forEach((m,i)=>{ const o=ac.createOscillator(),gg=ac.createGain(); o.type="sawtooth"; o.frequency.value=f*m; o.detune.value=det[i]; gg.gain.value=lvl[i]; o.connect(gg).connect(lp); o.start(t); oscs.push(o); });
   lp.connect(sat).connect(out).connect(bassOut);
-  out.gain.setValueAtTime(0,t); out.gain.linearRampToValueAtTime(.34,t+.015);
-  bassVoice={ out, oscs, mult };
+  out.gain.setValueAtTime(0,t);
+  if(!pulsing) out.gain.linearRampToValueAtTime(BASS_PEAK,t+.015); // pulsing voices wait for the next beat step
+  bassVoice={ out, oscs, mult, lp };
 }
 function bassOff(){
   if(!bassVoice) return;
@@ -312,8 +325,14 @@ let nextStep=0, step=0;
 function scheduler(){
   if(!ac) return;
   const G=GENRES[state.drums], sd=60/state.bpm/4;
-  if(nextStep < ac.currentTime) { nextStep = ac.currentTime + .05; step = 0; }
-  while(nextStep < ac.currentTime + .12){
+  if(nextStep===0) nextStep = ac.currentTime + .05;
+  while(nextStep < ac.currentTime) { nextStep += sd; step++; } // fell behind: skip missed steps, keep the bar in place
+  while(nextStep < ac.currentTime + .2){
+    const bp=BASS_RHYTHM[state.bassRhythm];
+    if(bassVoice && bp){
+      const i=step%16, c=bp[i], sw=G.p ? G.swing : 50, t=nextStep + (i%2 ? (sw/100*2-1)*sd : 0);
+      if(c!==".") bassPulse(t, c==="o"?.7:1, sd);
+    }
     if(G.p){
       const i=step%16, t=nextStep + (i%2 ? (G.swing/100*2-1)*sd : 0);
       for(const [inst,pat] of Object.entries(G.p)){
@@ -381,6 +400,7 @@ function toCanvas(lm,L){ return { x:L.W-(L.ox+lm.x*L.dw), y:L.oy+lm.y*L.dh }; }
 
 function frame(){
   requestAnimationFrame(frame);
+  scheduler(); // extra tick from the draw loop keeps the beat steady if timers get delayed
   const L=layout(), {W,H}=L, u=Math.min(W,H)/1080;
   g.fillStyle="#000"; g.fillRect(0,0,W,H);
 
