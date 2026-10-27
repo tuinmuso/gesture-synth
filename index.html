@@ -102,6 +102,15 @@ kbd{font:inherit;border:1px solid var(--line);border-radius:4px;padding:0 4px;co
     </div>
 
     <div class="group">
+      <div class="label">Vocal</div>
+      <label class="check"><input type="checkbox" id="mic"> Record my voice</label>
+      <div class="row" style="align-items:center"><span class="label" style="flex:0 0 auto">Vocal reverb</span><input type="range" id="vverb" min="0" max="100" value="40"></div>
+      <div class="row" style="align-items:center"><span class="label" style="flex:0 0 auto">Vocal level</span><input type="range" id="vlevel" min="0" max="100" value="70"></div>
+      <label class="check"><input type="checkbox" id="monitor"> Hear my voice (headphones only)</label>
+      <div class="status" id="micStatus"></div>
+    </div>
+
+    <div class="group">
       <div class="label">Video</div>
       <div class="seg" id="format"><button data-v="portrait" aria-pressed="true">9:16 TikTok</button><button data-v="landscape" aria-pressed="false">16:9</button></div>
       <select id="camera" aria-label="Camera"><option value="">Default camera</option></select>
@@ -564,6 +573,54 @@ $("startBtn").onclick = async ()=>{
     $("startBtn").textContent="Keyboard mode";
   }
 };
+
+/* ---------- vocal mic: clean-up, compression and its own plate reverb, mixed into the recording ---------- */
+let micStream=null, micSrc=null, vocalOut=null, vocalVerbRet=null, monitorGain=null;
+const vverbGain = () => Math.pow($("vverb").value/100, 1.2) * 1.4;
+const vlevelGain = () => Math.pow($("vlevel").value/100, 1.5) * 2.2;
+function buildVocalChain(){
+  const hp=ac.createBiquadFilter(); hp.type="highpass"; hp.frequency.value=95;
+  const mud=ac.createBiquadFilter(); mud.type="peaking"; mud.frequency.value=300; mud.Q.value=1; mud.gain.value=-3;
+  const air=ac.createBiquadFilter(); air.type="highshelf"; air.frequency.value=9000; air.gain.value=3;
+  const vc=ac.createDynamicsCompressor(); vc.threshold.value=-22; vc.ratio.value=3.5; vc.attack.value=.005; vc.release.value=.12; vc.knee.value=6;
+  vocalOut=ac.createGain(); vocalOut.gain.value=vlevelGain();
+  micSrc.connect(hp).connect(mud).connect(air).connect(vc).connect(vocalOut);
+  // vocal plate: 40 ms pre-delay keeps the words clear before the tail blooms
+  const pre=ac.createDelay(.2); pre.delayTime.value=.04;
+  const plate=ac.createConvolver(); plate.buffer=impulse(2.6);
+  const rhp=ac.createBiquadFilter(); rhp.type="highpass"; rhp.frequency.value=300;
+  const rlp=ac.createBiquadFilter(); rlp.frequency.value=8000;
+  vocalVerbRet=ac.createGain(); vocalVerbRet.gain.value=vverbGain();
+  vocalOut.connect(pre).connect(rhp).connect(plate).connect(rlp).connect(vocalVerbRet);
+  // into the recording (not the speaker, so it can't feed back)
+  vocalOut.connect(recDest); vocalVerbRet.connect(recDest);
+  // optional live monitoring for headphones
+  monitorGain=ac.createGain(); monitorGain.gain.value=$("monitor").checked?1:0;
+  vocalOut.connect(monitorGain); vocalVerbRet.connect(monitorGain); monitorGain.connect(ac.destination);
+}
+$("mic").onchange = async e => {
+  if(!ac){ initAudio(); $("recBtn").disabled=false; }
+  if(e.target.checked){
+    try{
+      $("micStatus").textContent="Asking for the microphone...";
+      micStream = await navigator.mediaDevices.getUserMedia({ audio:{ echoCancellation:true, noiseSuppression:false, autoGainControl:false } });
+      micSrc = ac.createMediaStreamSource(micStream);
+      buildVocalChain();
+      $("micStatus").textContent="Mic on. Your voice goes into recordings.";
+    }catch(err){
+      e.target.checked=false;
+      $("micStatus").textContent = err && err.name==="NotAllowedError" ? "Microphone access was blocked. Allow it in Settings, then try again." : "The microphone could not start.";
+    }
+  } else {
+    try{ micSrc && micSrc.disconnect(); vocalOut && vocalOut.disconnect(); vocalVerbRet && vocalVerbRet.disconnect(); monitorGain && monitorGain.disconnect(); }catch{}
+    micStream && micStream.getTracks().forEach(t=>t.stop());
+    micStream=micSrc=vocalOut=vocalVerbRet=monitorGain=null;
+    $("micStatus").textContent="";
+  }
+};
+$("vverb").oninput = () => { if(vocalVerbRet) vocalVerbRet.gain.setTargetAtTime(vverbGain(), ac.currentTime, .05); };
+$("vlevel").oninput = () => { if(vocalOut) vocalOut.gain.setTargetAtTime(vlevelGain(), ac.currentTime, .05); };
+$("monitor").onchange = e => { if(monitorGain) monitorGain.gain.setTargetAtTime(e.target.checked?1:0, ac.currentTime, .03); };
 
 /* keyboard fallback */
 const PAD_KEYS={q:1,w:2,e:3,r:4,t:5};
