@@ -158,6 +158,7 @@ const KEY='tuin-vocal-v1';
 const DEF={assess:[],goal:null,runs:{},sessions:[],health:{},settings:{latency:60,fold:true}};
 function load(){try{const s=JSON.parse(localStorage.getItem(KEY)||'null');return Object.assign(JSON.parse(JSON.stringify(DEF)),s||{});}catch(e){return JSON.parse(JSON.stringify(DEF));}}
 let S=load();
+S.settings=Object.assign({latency:60,fold:true,vol:1.2,guide:'voice',speak:true},S.settings);
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}}
 const today=()=>new Date().toLocaleDateString('en-CA');
 const $=s=>document.querySelector(s);
@@ -178,17 +179,17 @@ const tone=s=>s>=85?'good':s>=60?'mid':'bad';
 
 /* ---------- exercise library ---------- */
 const EX={
-  trill:{name:'Lip trill or straw, 5 tones',block:'Warm-up',kind:'pattern',deg:[0,2,4,5,7,5,4,2,0],len:.5,bpm:96,reps:5,
+  trill:{name:'Lip trill or straw, 5 tones',block:'Warm-up',kind:'pattern',deg:[0,2,4,5,7,5,4,2,0],len:.5,bpm:96,reps:5,vowel:'oo',
     how:'Lip trill, tongue trill or sing through a straw. Easy air, no pushing. Moves up a half step each round.'},
-  arp:{name:'Octave arpeggio 1-3-5-8',block:'Range',kind:'pattern',deg:[0,4,7,12,7,4,0],len:.5,bpm:84,reps:5,
+  arp:{name:'Octave arpeggio 1-3-5-8',block:'Range',kind:'pattern',deg:[0,4,7,12,7,4,0],len:.5,bpm:84,reps:5,vowel:'eh',
     how:'Sing on "nay" or "gee". Keep the top light and let it flip into head voice if it wants to. Never squeeze.'},
   messa:{name:'Messa di voce',block:'Control',kind:'messa',deg:[0],len:8,bpm:60,reps:3,
     how:'One note on "ah": start soft, swell to full over 4 beats, back to soft over 4 beats. Scored on steady pitch and a smooth swell.'},
   rossini:{name:'Rossini 9-tone scale',block:'Agility',kind:'pattern',deg:[0,2,4,5,7,9,11,12,14,12,11,9,7,5,4,2,0],len:.25,bpm:66,reps:4,
     how:'The classic bel canto agility scale, on "ah". Every note distinct, no smearing. Builds the coordination your runs need.'},
-  belt:{name:'Power ladder 1-5-8',block:'Power',kind:'pattern',deg:[0,7,12,7,0],len:2,bpm:72,reps:3,
+  belt:{name:'Power ladder 1-5-8',block:'Power',kind:'pattern',deg:[0,7,12,7,0],len:2,bpm:72,reps:3,vowel:'eh',
     how:'Big, full "yeah" or "hey" on each note, held 2 beats. Bright and forward, not shouted. Stays in your comfortable range.'},
-  hum:{name:'Hum, descending 5 tones',block:'Cool-down',kind:'pattern',deg:[7,5,4,2,0],len:1,bpm:72,reps:4,down:true,
+  hum:{name:'Hum, descending 5 tones',block:'Cool-down',kind:'pattern',deg:[7,5,4,2,0],len:1,bpm:72,reps:4,down:true,vowel:'mm',
     how:'Gentle hum, lips closed, teeth apart. Moves down each round to settle the voice.'}
 };
 const RUNS=[
@@ -265,15 +266,19 @@ function monthIndex(){if(!S.goal)return 0;const d=(Date.now()-new Date(S.goal.st
 
 /* ---------- audio ---------- */
 let ctx=null,analyser=null,buf=null,raf=0,trail=[],listeners=new Set(),live={m:0,c:0};
-let micError='';
+let micError='';let master=null;
 async function initAudio(){
   if(ctx){if(ctx.state==='suspended')await ctx.resume();return true;}
   try{
+    try{if(navigator.audioSession)navigator.audioSession.type='play-and-record';}catch(e){}
     const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
     ctx=new (window.AudioContext||window.webkitAudioContext)();
     const src=ctx.createMediaStreamSource(stream);
     analyser=ctx.createAnalyser();analyser.fftSize=2048;src.connect(analyser);
     buf=new Float32Array(analyser.fftSize);
+    master=ctx.createGain();master.gain.value=S.settings.vol;
+    const comp=ctx.createDynamicsCompressor();comp.threshold.value=-14;comp.knee.value=8;comp.ratio.value=8;comp.attack.value=.003;comp.release.value=.15;
+    master.connect(comp).connect(ctx.destination);
     loop();return true;
   }catch(e){micError='The microphone is blocked here. Open this page in Safari or Chrome from a web link (for example GitHub Pages), not in a file preview, and allow the microphone.';return false;}
 }
@@ -301,18 +306,48 @@ function loop(){
   raf=requestAnimationFrame(loop);
 }
 const nodes=[];
+const VOWELS={ah:[[850,80,1],[1220,90,.55],[2810,120,.3]],oo:[[350,60,1],[800,80,.35],[2700,120,.12]],eh:[[600,70,1],[2000,100,.5],[2800,120,.3]],mm:[[280,60,1],[1200,120,.08],[2600,150,.04]]};
 function playNote(m,t,dur){
+  if(S.settings.guide==='voice'){voiceNote(m,t,dur,P.vowel||'ah');return;}
   const o=ctx.createOscillator(),g=ctx.createGain(),o2=ctx.createOscillator(),g2=ctx.createGain();
-  o.type='triangle';o.frequency.value=mtof(m);o2.type='sine';o2.frequency.value=mtof(m)*2;g2.gain.value=.25;
+  o.type='triangle';o.frequency.value=mtof(m);o2.type='sine';o2.frequency.value=mtof(m)*2;g2.gain.value=.3;
   const end=t+dur*.94;
-  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.22,t+.015);g.gain.setValueAtTime(.22,Math.max(t+.02,end-.03));g.gain.linearRampToValueAtTime(0,end);
-  o.connect(g);o2.connect(g2).connect(g);g.connect(ctx.destination);
+  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.7,t+.015);g.gain.setValueAtTime(.7,Math.max(t+.02,end-.03));g.gain.linearRampToValueAtTime(0,end);
+  o.connect(g);o2.connect(g2).connect(g);g.connect(master);
   o.start(t);o2.start(t);o.stop(end+.02);o2.stop(end+.02);nodes.push(o,o2);
+}
+function voiceNote(m,t,dur,vowel){
+  const f=mtof(m),end=t+dur*.95,att=Math.min(.06,dur*.25);
+  const src=ctx.createOscillator();src.type='sawtooth';src.frequency.value=f;
+  const src2=ctx.createOscillator();src2.type='sawtooth';src2.frequency.value=f;src2.detune.value=6;
+  const vib=ctx.createOscillator(),vg=ctx.createGain();vib.frequency.value=5.4;
+  vg.gain.setValueAtTime(0,t);if(dur>.45)vg.gain.linearRampToValueAtTime(f*.012,t+Math.min(.5,dur*.6));
+  vib.connect(vg);vg.connect(src.frequency);vg.connect(src2.frequency);
+  const pre=ctx.createGain();pre.gain.value=.5;src.connect(pre);src2.connect(pre);
+  const env=ctx.createGain();
+  env.gain.setValueAtTime(0,t);env.gain.linearRampToValueAtTime(1,t+att);env.gain.setValueAtTime(1,Math.max(t+att,end-.05));env.gain.linearRampToValueAtTime(0,end);
+  const out=ctx.createGain();out.gain.value=vowel==='mm'?5:3.2;
+  for(const [fr,bw,gain] of VOWELS[vowel]||VOWELS.ah){const bp=ctx.createBiquadFilter();bp.type='bandpass';bp.frequency.value=fr;bp.Q.value=fr/bw;
+    const g=ctx.createGain();g.gain.value=gain;pre.connect(bp).connect(g).connect(env);}
+  env.connect(out).connect(master);
+  [src,src2,vib].forEach(o=>{o.start(t);o.stop(end+.05);nodes.push(o);});
+}
+function speak(text){
+  return new Promise(res=>{
+    if(!S.settings.speak||!window.speechSynthesis){res();return;}
+    try{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);
+      const vs=speechSynthesis.getVoices();
+      const pick=vs.find(v=>/tessa/i.test(v.name))||vs.find(v=>v.lang==='en-ZA')||vs.find(v=>/karen|samantha|serena|moira/i.test(v.name))||vs.find(v=>/^en/i.test(v.lang));
+      if(pick)u.voice=pick;u.rate=1.02;u.volume=1;
+      const done=()=>{clearTimeout(to);res();};const to=setTimeout(res,6000);
+      u.onend=done;u.onerror=done;speechSynthesis.speak(u);
+    }catch(e){res();}
+  });
 }
 function click(t,acc){
   const o=ctx.createOscillator(),g=ctx.createGain();o.type='square';o.frequency.value=acc?2200:1600;
-  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(acc?.12:.07,t+.002);g.gain.exponentialRampToValueAtTime(.0001,t+.035);
-  o.connect(g).connect(ctx.destination);o.start(t);o.stop(t+.04);nodes.push(o);
+  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(acc?.35:.22,t+.002);g.gain.exponentialRampToValueAtTime(.0001,t+.035);
+  o.connect(g).connect(master);o.start(t);o.stop(t+.04);nodes.push(o);
 }
 function killNodes(){while(nodes.length){try{nodes.pop().stop(0);}catch(e){}}}
 
@@ -322,7 +357,8 @@ function sleepUntil(t){return new Promise(res=>{const id=setInterval(()=>{if(P.a
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 let mainResolve=null;
 function waitMain(label){const b=$('#pMain');b.textContent=label;b.hidden=false;b.disabled=false;return new Promise(r=>{mainResolve=r;});}
-$('#pMain').onclick=()=>{if(mainResolve){const r=mainResolve;mainResolve=null;$('#pMain').disabled=true;r(true);}};
+let spkPrimed=false;
+$('#pMain').onclick=()=>{if(!spkPrimed&&window.speechSynthesis&&S.settings.speak){try{const u=new SpeechSynthesisUtterance(' ');u.volume=0;speechSynthesis.speak(u);spkPrimed=true;}catch(e){}}if(mainResolve){const r=mainResolve;mainResolve=null;$('#pMain').disabled=true;r(true);}};
 let skipResolve=null;
 $('#pSkip').onclick=()=>{P.skip=true;if(mainResolve){const r=mainResolve;mainResolve=null;r(false);}};
 $('#pClose').onclick=closePlayer;
@@ -446,6 +482,7 @@ async function doExercise(id,opts={}){
   if(!await needMic())return null;
   const go=await waitMain(opts.inSession?'Start exercise':'Start');if(!go)return P.skip?{score:null}:null;
   $('#pSkip').hidden=false;
+  P.vowel=ex.vowel||'ah';await speak(ex.name);
   const scores=[];const roots=repRoots(ex,reps);
   for(let i=0;i<roots.length;i++){
     if(P.abort||P.skip)break;
@@ -455,7 +492,9 @@ async function doExercise(id,opts={}){
     const a=await attempt(notes,ex.bpm,true);if(!a)break;
     const r=ex.kind==='messa'?scoreMessa(a):scoreNotes(a);scores.push(r.score);showDots(r);
     $('#pCoach').textContent=ex.kind==='messa'?`${r.score}. Pitch steadiness ${r.stab}, swell shape ${r.swell}.`:coachLine(r);
-    setPhase('Round done');await sleep(1300);
+    setPhase('Round done');
+    if(i<roots.length-1)await speak(r.score>=85?'Nice. Up a half step.':r.score>=60?'Good. Next one up.':'Keep going. Next one.');else await sleep(800);
+    await sleep(400);
   }
   P.mode='trail';
   const avg=scores.length?Math.round(mean(scores)):null;
@@ -505,6 +544,7 @@ async function doRun(id,opts={}){
   if(!await needMic())return null;
   const go=await waitMain('Start run');if(!go)return P.skip?{score:null}:null;
   $('#pSkip').hidden=false;$('#pMain').hidden=true;
+  P.vowel='ah';await speak(r.name+'. Listen first, then sing it back.');
   const scores=[];let n=0;
   while(!P.abort&&!P.skip&&n<max){
     n++;
@@ -514,9 +554,10 @@ async function doRun(id,opts={}){
     if(!st.chunk)scores.push(res.score);
     const msg=decide(r,st,res.score);st.last=today();save();
     $('#pCoach').textContent=`${res.score}%. ${msg}`;
+    await speak(`${res.score}. ${msg.replace(/bpm/g,'')}`);
     setMeta([['Tempo',st.bpm+' bpm'],['Clean tempo',st.clean?st.clean+' bpm':'not yet'],['Streak',st.streak+'/2'],['Part',st.chunk==='a'?'1st half':st.chunk==='b'?'2nd half':'Whole run']]);
     if(n>=max)break;
-    if($('#pAuto').checked){setPhase('Next take');await sleep(1800);}
+    if($('#pAuto').checked){setPhase('Next take');await sleep(700);}
     else{const g=await waitMain('Next take');if(!g)break;}
   }
   $('#pMain').hidden=false;P.mode='trail';
@@ -571,10 +612,10 @@ async function doAssess(){
   if(!await waitMain('Start'))return;
   const c={lo:lo+3,hi:hi-3};const targets=[0,1,2,3,4].map(i=>Math.round(c.lo+(c.hi-c.lo)*[.1,.55,.3,.8,.45][i]));
   const errs=[];
-  for(const m of targets){if(P.abort)return;
+  P.vowel='ah';for(const m of targets){if(P.abort)return;
     const a=await attempt([{m,b:2}],60,true);if(!a)return;const r=scoreNotes(a);showDots(r);
     if(!r.notes[0].missed)errs.push(Math.abs(r.notes[0].err));await sleep(600);}
-  const pitch=errs.length?Math.round(mean(errs)):50;
+  const pitch=errs.length?Math.round(mean(errs)):50;await speak('All done. Here is your baseline.');
   P.mode='trail';
   S.assess.push({d:today(),low:lo,high:hi,sustain,pitch});save();
   setPhase('Done');$('#pDots').innerHTML='';
@@ -798,6 +839,11 @@ function vProgress(){
     <label class="field"><span class="label">Timing offset: <span id="latV">${S.settings.latency}</span> ms</span><input id="lat" type="range" min="0" max="250" step="10" value="${S.settings.latency}"></label>
     <p class="lede" style="font-size:13px">If notes you sang on time score as late, raise this. Bluetooth headphones usually need 150 or more.</p>
     <label class="toggle" style="margin-top:6px"><input type="checkbox" id="fold" ${S.settings.fold?'checked':''}> Accept the right note in another octave</label>
+    <label class="field" style="margin-top:14px"><span class="label">Guide volume: <span id="volV">${Math.round(S.settings.vol*100)}</span>%</span><input id="vol" type="range" min="0.3" max="2.5" step="0.1" value="${S.settings.vol}"></label>
+    <div class="check"><span class="label">Guide</span><div class="chips"><button class="chip" data-g="voice" aria-pressed="${S.settings.guide==='voice'}">Sung voice</button><button class="chip" data-g="tone" aria-pressed="${S.settings.guide==='tone'}">Piano-like tone</button></div></div>
+    <label class="toggle"><input type="checkbox" id="spk" ${S.settings.speak?'checked':''}> Spoken coaching between takes</label>
+    <div class="row" style="margin-top:10px"><button class="btn" id="testG">Test the guide</button></div>
+    <p class="lede" style="font-size:13px">Still too soft on iPhone? Check the silent switch is off and the volume buttons are up while the app is open.</p>
   </div>
   <h2>Backup</h2>
   <p class="lede">Everything is saved in this browser only. Download a backup now and then, and restore it on another device.</p>
@@ -805,6 +851,10 @@ function vProgress(){
   <p id="impMsg" class="lede"></p>`;
   $('#lat').oninput=e=>{S.settings.latency=+e.target.value;$('#latV').textContent=e.target.value;save();};
   $('#fold').onchange=e=>{S.settings.fold=e.target.checked;save();};
+  $('#vol').oninput=e=>{S.settings.vol=+e.target.value;$('#volV').textContent=Math.round(S.settings.vol*100);if(master)master.gain.value=S.settings.vol;save();};
+  document.querySelectorAll('[data-g]').forEach(b=>b.onclick=()=>{S.settings.guide=b.dataset.g;save();vProgress();});
+  $('#spk').onchange=e=>{S.settings.speak=e.target.checked;save();};
+  $('#testG').onclick=async()=>{if(!await initAudio())return;const c=comfy();P.vowel='ah';let t=ctx.currentTime+.1;[0,4,7,12].forEach((d,i)=>playNote(c.lo+3+d,t+i*.45,.45));await sleep(2000);speak('Your turn.');};
   $('#exp').onclick=()=>{const blob=new Blob([JSON.stringify(S,null,1)],{type:'application/json'});const u=URL.createObjectURL(blob);const l=document.createElement('a');l.href=u;l.download=`tuin-vocal-backup-${today()}.json`;document.body.appendChild(l);l.click();l.remove();setTimeout(()=>URL.revokeObjectURL(u),2000);};
   $('#imp').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(!d.assess)throw 0;S=Object.assign(JSON.parse(JSON.stringify(DEF)),d);save();render();}catch(x){$('#impMsg').textContent='That file is not a TUIN Vocal backup.';}};r.readAsText(f);};
 }
