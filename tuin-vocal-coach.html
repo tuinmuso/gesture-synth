@@ -1,0 +1,815 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>TUIN Vocal Coach</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;800&family=Manrope:wght@400;500;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+/* Layout: one narrow column, tab bar fixed to the bottom on phones, full-screen practice player on top */
+:root{
+  --bg:#ffffff; --fg:#0b0b0b; --muted:#6e6761; --line:#e8e3de; --card:#f5f2ef;
+  --accent:#ff5a1f; --accent-ink:#ffffff; --good:#1c9a52; --bad:#d23a2c;
+  --font-d:'Syne','Helvetica Neue',Arial,sans-serif;
+  --font-b:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --font-m:'JetBrains Mono',ui-monospace,Menlo,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root{--bg:#0a0a0a;--fg:#f4f1ee;--muted:#9b938c;--line:#24201e;--card:#151311;--accent:#ff6a33;--accent-ink:#0a0a0a;--good:#3ccf7a;--bad:#ff5d4f;color-scheme:dark}
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg)}
+body{font-family:var(--font-b);font-size:15px;line-height:1.5;padding-bottom:calc(76px + env(safe-area-inset-bottom,0px))}
+[hidden]{display:none!important}
+button,input,select{font:inherit;color:inherit}
+.wrap{max-width:720px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+header.top{padding-block:calc(18px + env(safe-area-inset-top,0px)) 8px;display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.mark{font-family:var(--font-d);font-weight:800;font-size:22px;letter-spacing:.02em}
+.mark span{color:var(--accent)}
+.date{font-family:var(--font-m);font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+h1{font-family:var(--font-d);font-weight:800;font-size:clamp(28px,7vw,40px);line-height:1.05;margin:18px 0 6px;text-wrap:balance}
+h2{font-family:var(--font-d);font-weight:700;font-size:19px;margin:28px 0 10px;text-wrap:balance}
+.lede{color:var(--muted);margin:0 0 8px;max-width:62ch}
+.label{font-family:var(--font-m);font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+.num{font-family:var(--font-m);font-variant-numeric:tabular-nums}
+nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--bg);border-top:1px solid var(--line);
+  padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
+nav.tabs .in{max-width:720px;margin:0 auto;display:grid;grid-template-columns:repeat(5,1fr)}
+nav.tabs button{background:none;border:0;padding:12px 4px 14px;font-size:12px;font-weight:700;color:var(--muted);cursor:pointer;letter-spacing:.02em}
+nav.tabs button[aria-current="page"]{color:var(--fg);box-shadow:inset 0 3px 0 var(--accent)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:999px;border:1.5px solid var(--fg);background:transparent;padding:10px 18px;font-weight:700;cursor:pointer}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.big{padding:14px 24px;font-size:16px}
+.btn:focus-visible,nav.tabs button:focus-visible,.chip:focus-visible,.style:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.btn:disabled{opacity:.4;cursor:default}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.list{display:flex;flex-direction:column;border-top:1px solid var(--line)}
+.item{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;padding:14px 0;border-bottom:1px solid var(--line)}
+.item .blk{font-family:var(--font-m);font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);width:64px}
+.item .t{font-weight:700}
+.item .s{font-size:13px;color:var(--muted)}
+.item>div{min-width:0}
+.pill{font-family:var(--font-m);font-size:12px;padding:3px 9px;border-radius:999px;border:1px solid var(--line);white-space:nowrap}
+.pill.good{border-color:var(--good);color:var(--good)}
+.pill.mid{border-color:var(--accent);color:var(--accent)}
+.pill.bad{border-color:var(--bad);color:var(--bad)}
+.panel{background:var(--card);border-radius:14px;padding:16px;margin:14px 0}
+.banner{border-left:4px solid var(--accent);padding:10px 14px;background:var(--card);border-radius:0 10px 10px 0;margin:14px 0}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{border:1.5px solid var(--line);background:transparent;border-radius:999px;padding:7px 14px;cursor:pointer;font-weight:500}
+.chip[aria-pressed="true"]{border-color:var(--fg);background:var(--fg);color:var(--bg)}
+.check{display:grid;grid-template-columns:92px 1fr;gap:10px;align-items:center;margin:10px 0}
+.styles{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.style{text-align:left;border:1.5px solid var(--line);background:transparent;border-radius:14px;padding:14px;cursor:pointer}
+.style[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.style b{display:block;font-family:var(--font-d);font-size:16px;margin-bottom:4px}
+.style small{color:var(--muted);display:block}
+.field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.field input,.field select{border:1.5px solid var(--line);background:var(--bg);border-radius:10px;padding:9px 11px;width:100%}
+.grid2{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.tablewrap{overflow-x:auto;margin:10px 0}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{font-family:var(--font-m);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:500}
+td.num{text-align:right} th.r{text-align:right}
+tr.now td{background:var(--card);font-weight:700}
+.goalbar{margin:14px 0}
+.goalbar .head{display:flex;justify-content:space-between;gap:10px;font-size:14px}
+.track{position:relative;height:10px;border-radius:999px;background:var(--line);margin-top:8px}
+.track .fill{position:absolute;left:0;top:0;bottom:0;border-radius:999px;background:var(--accent)}
+.track .ms{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--fg)}
+.chart{width:100%;height:auto;display:block}
+.chart text{fill:var(--muted);font-family:var(--font-m);font-size:10px}
+.empty{color:var(--muted);padding:18px 0}
+/* Player */
+#player{position:fixed;inset:0;z-index:50;background:var(--bg);overflow-y:auto;
+  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+#player .wrap{padding-block:14px 30px;display:flex;flex-direction:column;gap:12px;min-height:100%}
+.phead{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.phead .ttl{font-family:var(--font-d);font-weight:800;font-size:20px;line-height:1.1}
+.x{border:0;background:none;font-size:15px;font-weight:700;cursor:pointer;padding:8px;color:var(--muted)}
+#pInstr{color:var(--muted);margin:0;max-width:60ch}
+.stage{position:relative;border:1px solid var(--line);border-radius:16px;overflow:hidden}
+#cv{display:block;width:100%;height:clamp(200px,36vh,320px)}
+.live{position:absolute;top:10px;left:12px;display:flex;align-items:baseline;gap:8px;pointer-events:none}
+#pNote{font-family:var(--font-d);font-weight:800;font-size:34px;line-height:1}
+#pCents{font-family:var(--font-m);font-size:12px;color:var(--muted)}
+#pPhase{position:absolute;top:12px;right:12px;font-family:var(--font-m);font-size:11px;letter-spacing:.1em;text-transform:uppercase;padding:4px 10px;border-radius:999px;border:1px solid var(--line);background:var(--bg)}
+#pPhase.sing{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.meta{display:flex;gap:18px;flex-wrap:wrap}
+.meta div{display:flex;flex-direction:column}
+.meta .v{font-family:var(--font-m);font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+#pCoach{font-weight:700;font-size:16px;min-height:24px;margin:0}
+.dots{display:flex;gap:6px;flex-wrap:wrap}
+.dot{display:flex;flex-direction:column;align-items:center;gap:3px;font-family:var(--font-m);font-size:10px;color:var(--muted);min-width:30px}
+.dot i{width:26px;height:26px;border-radius:50%;display:block;border:2px solid var(--line)}
+.dot.good i{background:var(--good);border-color:var(--good)}
+.dot.mid i{background:var(--accent);border-color:var(--accent)}
+.dot.bad i{background:transparent;border-color:var(--bad)}
+.dot.worst span{color:var(--fg);font-weight:700}
+.pfoot{margin-top:auto;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.toggle{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.toggle input{accent-color:var(--accent);width:18px;height:18px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top"><div class="mark">TUIN<span>.</span> vocal</div><div class="date" id="today"></div></header>
+  <main id="view"></main>
+</div>
+
+<nav class="tabs" aria-label="Sections"><div class="in">
+  <button data-tab="today">Today</button>
+  <button data-tab="runs">Runs</button>
+  <button data-tab="assess">Assess</button>
+  <button data-tab="goal">Goal</button>
+  <button data-tab="progress">Progress</button>
+</div></nav>
+
+<section id="player" hidden aria-live="polite">
+  <div class="wrap">
+    <div class="phead"><div><div class="label" id="pBlock">Exercise</div><div class="ttl" id="pTitle"></div></div><button class="x" id="pClose">Close</button></div>
+    <p id="pInstr"></p>
+    <div class="stage">
+      <canvas id="cv"></canvas>
+      <div class="live"><span id="pNote">--</span><span id="pCents"></span></div>
+      <div id="pPhase">Ready</div>
+    </div>
+    <div class="meta" id="pMeta"></div>
+    <p id="pCoach"></p>
+    <div class="dots" id="pDots"></div>
+    <div class="pfoot">
+      <button class="btn primary big" id="pMain">Start</button>
+      <button class="btn" id="pSkip" hidden>Next exercise</button>
+      <label class="toggle" id="pAutoWrap" hidden><input type="checkbox" id="pAuto" checked> Keep going automatically</label>
+      <label class="toggle" id="pRefWrap" hidden><input type="checkbox" id="pRef" checked> Play it first</label>
+    </div>
+  </div>
+</section>
+
+<script>
+/* ---------- state ---------- */
+const KEY='tuin-vocal-v1';
+const DEF={assess:[],goal:null,runs:{},sessions:[],health:{},settings:{latency:60,fold:true}};
+function load(){try{const s=JSON.parse(localStorage.getItem(KEY)||'null');return Object.assign(JSON.parse(JSON.stringify(DEF)),s||{});}catch(e){return JSON.parse(JSON.stringify(DEF));}}
+let S=load();
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}}
+const today=()=>new Date().toLocaleDateString('en-CA');
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ---------- music ---------- */
+const NAMES=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const nn=m=>{m=Math.round(m);return NAMES[((m%12)+12)%12]+(Math.floor(m/12)-1);};
+const mtof=m=>440*Math.pow(2,(m-69)/12);
+const ftom=f=>69+12*Math.log2(f/440);
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const median=a=>{if(!a.length)return NaN;const b=[...a].sort((x,y)=>x-y);const h=b.length>>1;return b.length%2?b[h]:(b[h-1]+b[h])/2;};
+const mean=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:0;
+function voice(){const a=S.assess[S.assess.length-1];return a?{low:a.low,high:a.high}:{low:55,high:76};}
+function comfy(){const v=voice();return{lo:v.low+3,hi:v.high-3};}
+function foldCents(c){if(!S.settings.fold)return c;return ((c+600)%1200+1200)%1200-600;}
+const tone=s=>s>=85?'good':s>=60?'mid':'bad';
+
+/* ---------- exercise library ---------- */
+const EX={
+  trill:{name:'Lip trill or straw, 5 tones',block:'Warm-up',kind:'pattern',deg:[0,2,4,5,7,5,4,2,0],len:.5,bpm:96,reps:5,
+    how:'Lip trill, tongue trill or sing through a straw. Easy air, no pushing. Moves up a half step each round.'},
+  arp:{name:'Octave arpeggio 1-3-5-8',block:'Range',kind:'pattern',deg:[0,4,7,12,7,4,0],len:.5,bpm:84,reps:5,
+    how:'Sing on "nay" or "gee". Keep the top light and let it flip into head voice if it wants to. Never squeeze.'},
+  messa:{name:'Messa di voce',block:'Control',kind:'messa',deg:[0],len:8,bpm:60,reps:3,
+    how:'One note on "ah": start soft, swell to full over 4 beats, back to soft over 4 beats. Scored on steady pitch and a smooth swell.'},
+  rossini:{name:'Rossini 9-tone scale',block:'Agility',kind:'pattern',deg:[0,2,4,5,7,9,11,12,14,12,11,9,7,5,4,2,0],len:.25,bpm:66,reps:4,
+    how:'The classic bel canto agility scale, on "ah". Every note distinct, no smearing. Builds the coordination your runs need.'},
+  belt:{name:'Power ladder 1-5-8',block:'Power',kind:'pattern',deg:[0,7,12,7,0],len:2,bpm:72,reps:3,
+    how:'Big, full "yeah" or "hey" on each note, held 2 beats. Bright and forward, not shouted. Stays in your comfortable range.'},
+  hum:{name:'Hum, descending 5 tones',block:'Cool-down',kind:'pattern',deg:[7,5,4,2,0],len:1,bpm:72,reps:4,down:true,
+    how:'Gentle hum, lips closed, teeth apart. Moves down each round to settle the voice.'}
+};
+const RUNS=[
+  {id:'pent',name:'Pentatonic drop',deg:[12,9,7,4,2,0],len:.25,start:60,level:1,tip:'The bread-and-butter pop run. Land the last note dead centre.'},
+  {id:'minpent',name:'Minor pentatonic run',deg:[12,10,7,5,3,0],len:.25,start:60,level:1,tip:'Darker, soul flavour. Keep the b3 near the end in tune.'},
+  {id:'turn',name:'Turn ornament',deg:[2,0,-1,0,4],len:.25,start:56,level:1,tip:'A tiny flick around the note. Think quick and light, not a slide.'},
+  {id:'blues',name:'Blues run with the b5',deg:[12,10,7,6,5,3,0],len:.25,start:54,level:2,tip:'The b5 is a half step between 5 and 4. Make it a real note, not a smear.'},
+  {id:'gospel',name:'Gospel climb and fall',deg:[0,2,4,7,9,12,9,7,4,2,0],len:.25,start:52,level:2,tip:'Up and back down. Keep the top note the same size as the rest.'},
+  {id:'rnb',name:'R&B cascade',deg:[12,14,12,10,7,10,7,5,3,0],len:.25,start:50,level:3,tip:'Changes direction twice. Learn it slow before you chase speed.'},
+  {id:'triplet',name:'Triplet melisma',deg:[7,9,7,5,7,5,4,5,4,2,0],len:1/3,start:48,level:3,tip:'Groups of three. Feel the triplet pulse, not straight sixteenths.'},
+  {id:'sig_aretha',sig:'aretha',name:'Soul riff with blue note',deg:[7,10,7,5,3,5,3,0],len:.25,start:52,level:2,tip:'Aretha-style riff. Lean into the b3 and b7, but land them as real notes.'},
+  {id:'sig_whitney',sig:'whitney',name:'Gospel lift and fall',deg:[7,9,12,14,12,9,7,4,5,4,2,0],len:.25,start:50,level:2,tip:'Whitney-style gospel run. Stay supported on the way down, do not let it go breathy.'},
+  {id:'sig_celine',sig:'celine',name:'Power lift ornament',deg:[5,7,9,12,11,12],len:.5,start:56,level:2,tip:'Céline-style lift into a big note. Climb cleanly and land the top note full.'},
+  {id:'sig_beyonce',sig:'beyonce',name:'Triplet R&B riff',deg:[12,10,12,10,7,10,7,5,7,5,3,0],len:1/3,start:48,level:3,tip:'Beyoncé-style rhythmic riff in triplets. Accent the first of each group.'},
+  {id:'sig_mariah',sig:'mariah',name:'Wide-leap melisma',deg:[19,16,14,12,9,12,9,7,4,0],len:.25,start:46,level:3,tip:'Mariah-style run with leaps. Keep the top light and the leaps exact.'}
+];
+const runById=id=>RUNS.find(r=>r.id===id);
+function runState(id){const r=runById(id);if(!S.runs[id])S.runs[id]={bpm:r.start,streak:0,clean:0,chunk:null,hist:[],last:null};return S.runs[id];}
+function runUnlocked(r){
+  if(r.level===1)return true;
+  const lvl=r.level-1;
+  return RUNS.filter(x=>x.level===lvl).some(x=>(S.runs[x.id]?.clean||0)>=(lvl===1?72:80));
+}
+function runRoot(r){const c=comfy();const lo=Math.min(...r.deg),hi=Math.max(...r.deg);
+  return Math.round((c.lo+c.hi)/2-(lo+hi)/2);}
+
+/* ---------- goals ---------- */
+const STYLES={
+  mariah:{name:'Mariah Carey',like:'Fast melisma, huge range, wide leaps in runs',
+    t:{low:52,high:86,sustain:16,tempo:140,pitch:10},w:{runs:.5,range:.3,control:.1,agility:.1}},
+  aretha:{name:'Aretha Franklin',like:'Soul and gospel riffs, blues notes, emotional phrasing',
+    t:{low:50,high:79,sustain:18,tempo:116,pitch:12},w:{runs:.4,range:.15,control:.25,agility:.2}},
+  whitney:{name:'Whitney Houston',like:'Power belting, long notes, gospel runs',
+    t:{low:52,high:82,sustain:22,tempo:120,pitch:10},w:{runs:.3,range:.2,control:.3,agility:.2}},
+  celine:{name:'Céline Dion',like:'Big sustained belts, breath control, dynamics',
+    t:{low:53,high:84,sustain:25,tempo:100,pitch:10},w:{runs:.15,range:.25,control:.45,agility:.15}},
+  beyonce:{name:'Beyoncé',like:'Clean R&B riffs, rhythmic triplets, control while moving',
+    t:{low:52,high:81,sustain:18,tempo:128,pitch:10},w:{runs:.4,range:.15,control:.2,agility:.25}},
+  custom:{name:'Custom',like:'Set your own targets',t:{low:53,high:79,sustain:18,tempo:110,pitch:12},w:{runs:.35,range:.2,control:.25,agility:.2}}
+};
+function blend(sel){
+  const ss=sel.map(k=>STYLES[k]).filter(Boolean);if(!ss.length)return{t:{...STYLES.custom.t},w:{...STYLES.custom.w}};
+  const t={low:Math.min(...ss.map(x=>x.t.low)),high:Math.max(...ss.map(x=>x.t.high)),sustain:Math.max(...ss.map(x=>x.t.sustain)),tempo:Math.max(...ss.map(x=>x.t.tempo)),pitch:Math.min(...ss.map(x=>x.t.pitch))};
+  const w={};['runs','range','control','agility'].forEach(k=>w[k]=Math.round(mean(ss.map(x=>x.w[k]))*100)/100);
+  return{t,w};
+}
+function goalSel(){const g=S.goal;if(!g)return[];if(g.singers)return g.singers;
+  const map={belter:['whitney','celine'],rnb:['mariah','beyonce'],soul:['aretha'],gospel:['aretha','whitney']};return map[g.style]||['custom'];}
+const selNames=sel=>sel.filter(k=>k!=='custom').map(k=>STYLES[k].name);
+const joinNames=a=>a.length<2?(a[0]||'Custom goal'):a.slice(0,-1).join(', ')+' and '+a[a.length-1];
+const CAPS={high:4,low:3};
+function bestClean(){return Math.max(0,...Object.values(S.runs).map(r=>r.clean||0));}
+function baseline(){
+  const g=S.goal;
+  if(g&&g.base)return g.base;
+  const a=S.assess[S.assess.length-1];if(!a)return null;
+  return{low:a.low,high:a.high,sustain:a.sustain,pitch:a.pitch,tempo:bestClean()||60};
+}
+function milestones(){
+  const g=S.goal;if(!g)return[];const b=g.base,t=g.t;const out=[];
+  for(let k=0;k<=12;k++){const f=k/12;
+    const hiGain=Math.min(t.high-b.high,CAPS.high), loGain=Math.min(b.low-t.low,CAPS.low);
+    const tempoT=Math.min(t.tempo,Math.round(b.tempo*1.8));
+    out.push({k,
+      high:Math.round(b.high+Math.max(0,hiGain)*f),
+      low:Math.round(b.low-Math.max(0,loGain)*f),
+      sustain:Math.round((b.sustain+(Math.max(t.sustain,b.sustain)-b.sustain)*f)*10)/10,
+      tempo:Math.round(b.tempo+(Math.max(tempoT,b.tempo)-b.tempo)*f),
+      pitch:Math.round(b.pitch-(Math.max(0,b.pitch-t.pitch))*f)});}
+  return out;
+}
+function goalLabel(){const n=selNames(goalSel());return n.length?'Training toward '+joinNames(n):'Custom goal';}
+function monthIndex(){if(!S.goal)return 0;const d=(Date.now()-new Date(S.goal.start).getTime())/864e5;return clamp(Math.floor(d/30.4)+1,1,12);}
+
+/* ---------- audio ---------- */
+let ctx=null,analyser=null,buf=null,raf=0,trail=[],listeners=new Set(),live={m:0,c:0};
+let micError='';
+async function initAudio(){
+  if(ctx){if(ctx.state==='suspended')await ctx.resume();return true;}
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+    ctx=new (window.AudioContext||window.webkitAudioContext)();
+    const src=ctx.createMediaStreamSource(stream);
+    analyser=ctx.createAnalyser();analyser.fftSize=2048;src.connect(analyser);
+    buf=new Float32Array(analyser.fftSize);
+    loop();return true;
+  }catch(e){micError='The microphone is blocked here. Open this page in Safari or Chrome from a web link (for example GitHub Pages), not in a file preview, and allow the microphone.';return false;}
+}
+function yin(b,sr){
+  const N=b.length,half=N>>1;let r=0;for(let i=0;i<N;i++)r+=b[i]*b[i];r=Math.sqrt(r/N);
+  if(r<0.005)return{f:0,c:0,rms:r};
+  const minT=Math.floor(sr/1200),maxT=Math.min(half-1,Math.floor(sr/65));
+  const d=new Float32Array(maxT+1);
+  for(let t=1;t<=maxT;t++){let s=0;for(let i=0;i<half;i++){const x=b[i]-b[i+t];s+=x*x;}d[t]=s;}
+  let run=0;d[0]=1;for(let t=1;t<=maxT;t++){run+=d[t];d[t]=run?d[t]*t/run:1;}
+  let tau=-1;
+  for(let t=minT;t<=maxT;t++){if(d[t]<0.15){while(t+1<=maxT&&d[t+1]<d[t])t++;tau=t;break;}}
+  if(tau<0){let mi=minT;for(let t=minT;t<=maxT;t++)if(d[t]<d[mi])mi=t;if(d[mi]<0.3)tau=mi;else return{f:0,c:0,rms:r};}
+  let bt=tau;if(tau>1&&tau<maxT){const a=d[tau-1],c=d[tau],e=d[tau+1];const den=a+e-2*c;if(den)bt=tau+(a-e)/(2*den);}
+  return{f:sr/bt,c:1-d[tau],rms:r};
+}
+function loop(){
+  analyser.getFloatTimeDomainData(buf);
+  const y=yin(buf,ctx.sampleRate);
+  const fr={t:ctx.currentTime-S.settings.latency/1000,m:y.f?ftom(y.f):0,c:y.c,rms:y.rms};
+  if(fr.c<0.8)fr.m=0;
+  live=fr;trail.push(fr);while(trail.length&&trail[0].t<fr.t-6)trail.shift();
+  listeners.forEach(fn=>fn(fr));
+  if(!$('#player').hidden){drawStage();updateLive();}
+  raf=requestAnimationFrame(loop);
+}
+const nodes=[];
+function playNote(m,t,dur){
+  const o=ctx.createOscillator(),g=ctx.createGain(),o2=ctx.createOscillator(),g2=ctx.createGain();
+  o.type='triangle';o.frequency.value=mtof(m);o2.type='sine';o2.frequency.value=mtof(m)*2;g2.gain.value=.25;
+  const end=t+dur*.94;
+  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.22,t+.015);g.gain.setValueAtTime(.22,Math.max(t+.02,end-.03));g.gain.linearRampToValueAtTime(0,end);
+  o.connect(g);o2.connect(g2).connect(g);g.connect(ctx.destination);
+  o.start(t);o2.start(t);o.stop(end+.02);o2.stop(end+.02);nodes.push(o,o2);
+}
+function click(t,acc){
+  const o=ctx.createOscillator(),g=ctx.createGain();o.type='square';o.frequency.value=acc?2200:1600;
+  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(acc?.12:.07,t+.002);g.gain.exponentialRampToValueAtTime(.0001,t+.035);
+  o.connect(g).connect(ctx.destination);o.start(t);o.stop(t+.04);nodes.push(o);
+}
+function killNodes(){while(nodes.length){try{nodes.pop().stop(0);}catch(e){}}}
+
+/* ---------- player plumbing ---------- */
+const P={abort:false,view:null,mode:'trail',lo:50,hi:80};
+function sleepUntil(t){return new Promise(res=>{const id=setInterval(()=>{if(P.abort||ctx.currentTime>=t){clearInterval(id);res();}},15);});}
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+let mainResolve=null;
+function waitMain(label){const b=$('#pMain');b.textContent=label;b.hidden=false;b.disabled=false;return new Promise(r=>{mainResolve=r;});}
+$('#pMain').onclick=()=>{if(mainResolve){const r=mainResolve;mainResolve=null;$('#pMain').disabled=true;r(true);}};
+let skipResolve=null;
+$('#pSkip').onclick=()=>{P.skip=true;if(mainResolve){const r=mainResolve;mainResolve=null;r(false);}};
+$('#pClose').onclick=closePlayer;
+function setPhase(txt,sing){const p=$('#pPhase');p.textContent=txt;p.classList.toggle('sing',!!sing);}
+function openPlayer(block,title,how){
+  P.abort=false;P.skip=false;P.view=null;P.mode='trail';
+  const v=voice();P.lo=v.low-5;P.hi=v.high+5;
+  $('#pBlock').textContent=block;$('#pTitle').textContent=title;$('#pInstr').textContent=how||'';
+  $('#pMeta').innerHTML='';$('#pCoach').textContent='';$('#pDots').innerHTML='';
+  $('#pSkip').hidden=true;$('#pAutoWrap').hidden=true;$('#pRefWrap').hidden=true;$('#pMain').hidden=false;$('#pMain').disabled=false;
+  setPhase('Ready');$('#player').hidden=false;document.body.style.overflow='hidden';sizeCanvas();
+}
+function closePlayer(){P.abort=true;killNodes();if(mainResolve){const r=mainResolve;mainResolve=null;r(false);}
+  $('#player').hidden=true;document.body.style.overflow='';render();}
+function setMeta(pairs){$('#pMeta').innerHTML=pairs.map(([k,v])=>`<div><span class="label">${esc(k)}</span><span class="v">${esc(v)}</span></div>`).join('');}
+function showDots(res){
+  const worst=res.notes.reduce((w,n,i)=>n.score<res.notes[w].score?i:w,0);
+  $('#pDots').innerHTML=res.notes.map((n,i)=>`<div class="dot ${tone(n.score)} ${i===worst&&n.score<85?'worst':''}"><i title="${n.missed?'missed':Math.round(n.err)+' cents'}"></i><span>${nn(n.m)}</span></div>`).join('');
+}
+async function needMic(){
+  const ok=await initAudio();
+  if(!ok){$('#pCoach').textContent=micError;setPhase('No mic');return false;}
+  return true;
+}
+
+/* ---------- canvas ---------- */
+const cv=$('#cv');let C={};
+function sizeCanvas(){const r=cv.getBoundingClientRect(),d=window.devicePixelRatio||1;cv.width=r.width*d;cv.height=r.height*d;
+  const cs=getComputedStyle(document.documentElement);C={fg:cs.getPropertyValue('--fg'),mu:cs.getPropertyValue('--muted'),li:cs.getPropertyValue('--line'),ac:cs.getPropertyValue('--accent'),go:cs.getPropertyValue('--good'),ba:cs.getPropertyValue('--bad')};}
+window.addEventListener('resize',()=>{if(!$('#player').hidden)sizeCanvas();});
+function drawStage(){
+  const g=cv.getContext('2d'),d=window.devicePixelRatio||1,W=cv.width/d,H=cv.height/d;
+  g.setTransform(d,0,0,d,0,0);g.clearRect(0,0,W,H);
+  const top=50,bot=H-14,lo=P.lo,hi=P.hi;const y=m=>bot-(m-lo)/(hi-lo)*(bot-top);
+  g.font='10px JetBrains Mono, monospace';g.textBaseline='middle';
+  for(let m=Math.ceil(lo);m<=hi;m++){if(((m%12)+12)%12===0||((m%12)+12)%12===7){g.strokeStyle=C.li;g.lineWidth=1;g.beginPath();g.moveTo(36,y(m));g.lineTo(W,y(m));g.stroke();g.fillStyle=C.mu;g.fillText(nn(m),4,y(m));}}
+  let t0,t1,frames;
+  if(P.mode==='attempt'&&P.view){t0=P.view.x0;t1=P.view.x1;frames=trail.filter(f=>f.t>=t0&&f.t<=t1);}
+  else{const now=ctx?ctx.currentTime:0;t1=now;t0=now-5;frames=trail;}
+  const x=t=>36+(t-t0)/(t1-t0)*(W-44);
+  if(P.mode==='attempt'&&P.view){
+    for(const n of P.view.targets){
+      const sc=n.score;g.fillStyle=sc==null?C.li:(sc>=85?C.go:sc>=60?C.ac:C.ba);g.globalAlpha=sc==null?1:.35;
+      const h=8;g.beginPath();g.roundRect?g.roundRect(x(n.t0),y(n.m)-h/2,Math.max(3,x(n.t1)-x(n.t0)-2),h,4):g.rect(x(n.t0),y(n.m)-h/2,x(n.t1)-x(n.t0)-2,h);g.fill();g.globalAlpha=1;}
+    if(ctx&&ctx.currentTime>=t0&&ctx.currentTime<=t1){g.strokeStyle=C.ac;g.lineWidth=1.5;g.beginPath();g.moveTo(x(ctx.currentTime),top-6);g.lineTo(x(ctx.currentTime),bot);g.stroke();}
+  }
+  g.fillStyle=C.fg;
+  for(const f of frames){if(!f.m||f.t<t0)continue;let m=f.m;
+    if(P.mode==='attempt'&&P.view&&S.settings.fold){const tg=P.view.targets.find(n=>f.t>=n.t0-.05&&f.t<=n.t1+.05)||P.view.targets[0];if(tg){while(m-tg.m>6)m-=12;while(tg.m-m>6)m+=12;}}
+    if(m<lo||m>hi)continue;g.beginPath();g.arc(x(f.t),y(m),2.2,0,7);g.fill();}
+}
+function updateLive(){
+  if(live.m){const r=Math.round(live.m);$('#pNote').textContent=nn(r);const c=Math.round((live.m-r)*100);$('#pCents').textContent=(c>0?'+':'')+c+' cents';}
+  else{$('#pNote').textContent='--';$('#pCents').textContent='';}
+}
+
+/* ---------- attempts and scoring ---------- */
+async function attempt(notes,bpm,ref=true){
+  const beat=60/bpm;let t=ctx.currentTime+.2;const refStart=t;
+  if(ref){for(const n of notes){playNote(n.m,t,n.b*beat);t+=n.b*beat;}t+=beat*.5;}
+  const countBeats=bpm>=100?4:2,cb=beat*(bpm>=100?1:1);
+  for(let i=0;i<countBeats;i++)click(t+i*cb,i===0);
+  const singStart=t+countBeats*cb;let tt=singStart;
+  const targets=notes.map(n=>{const o={m:n.m,t0:tt,t1:tt+n.b*beat,score:null};tt+=n.b*beat;return o;});
+  const end=tt+.35;
+  P.mode='attempt';P.view={targets,x0:singStart-.6,x1:end};
+  const lo=Math.min(...notes.map(n=>n.m)),hi=Math.max(...notes.map(n=>n.m));P.lo=lo-5;P.hi=hi+5;
+  setPhase(ref?'Listen':'Get ready');
+  await sleepUntil(t);if(P.abort)return null;
+  setPhase('Count in');
+  await sleepUntil(singStart-.02);if(P.abort)return null;
+  setPhase('Sing',true);
+  await sleepUntil(end);if(P.abort)return null;
+  setPhase('Scoring');
+  const frames=trail.filter(f=>f.t>=singStart-.3&&f.t<=end);
+  return{targets,frames,singStart,end,beat};
+}
+function scoreNotes(a){
+  const notes=a.targets.map(n=>{
+    const len=n.t1-n.t0,w0=n.t0+len*.18,w1=n.t1-len*.12;
+    const inWin=a.frames.filter(f=>f.t>=w0&&f.t<=w1);
+    const voiced=inWin.filter(f=>f.m);
+    if(!voiced.length)return{...n,missed:true,err:999,score:0};
+    const cents=voiced.map(f=>foldCents((f.m-n.m)*100));
+    const err=median(cents);const ae=Math.abs(err);
+    let s=ae<=25?100:ae>=100?0:100-(ae-25)/75*100;
+    const cov=voiced.length/Math.max(1,inWin.length);if(cov<.5)s*=.5+cov;
+    return{...n,missed:false,err,score:Math.round(s)};});
+  a.targets.forEach((t,i)=>t.score=notes[i].score);
+  return{notes,score:Math.round(mean(notes.map(n=>n.score)))};
+}
+function scoreMessa(a){
+  const n=a.targets[0];const fs=a.frames.filter(f=>f.t>=n.t0+.2&&f.t<=n.t1-.1);
+  const v=fs.filter(f=>f.m);
+  if(v.length<10){n.score=0;return{notes:[{...n,score:0,missed:true,err:999}],score:0,stab:0,swell:0};}
+  const cents=v.map(f=>foldCents((f.m-n.m)*100));const mu=mean(cents);
+  const sd=Math.sqrt(mean(cents.map(c=>(c-mu)**2)));
+  const centre=Math.abs(median(cents));
+  const stab=clamp(100-Math.max(0,sd-8)*2.2-Math.max(0,centre-20)*1.2,0,100);
+  const len=n.t1-n.t0;const ideal=fs.map(f=>1-Math.abs(2*((f.t-n.t0)/len)-1));const rm=fs.map(f=>f.rms);
+  const mi=mean(ideal),mr=mean(rm);let num=0,di=0,dr=0;
+  for(let i=0;i<fs.length;i++){num+=(ideal[i]-mi)*(rm[i]-mr);di+=(ideal[i]-mi)**2;dr+=(rm[i]-mr)**2;}
+  const r=di&&dr?num/Math.sqrt(di*dr):0;const swell=clamp(r*100,0,100);
+  const score=Math.round(stab*.6+swell*.4);n.score=score;
+  return{notes:[{...n,score,missed:false,err:median(cents)}],score,stab:Math.round(stab),swell:Math.round(swell)};
+}
+function repRoots(ex,reps){
+  const c=comfy();const dmin=Math.min(...ex.deg),dmax=Math.max(...ex.deg);
+  let s=c.lo-dmin,e=c.hi-dmax;if(e<s){s=e=Math.round((s+e)/2);}
+  if(ex.kind==='messa'){const mid=Math.round((c.lo+c.hi)/2);return[mid-2,mid,mid+2].slice(0,reps);}
+  const roots=[];for(let i=0;i<reps;i++)roots.push(Math.min(e,s+i));
+  if(ex.down){const top=Math.min(e,s+reps+1);return roots.map((_,i)=>Math.max(s-3,top-i));}
+  return roots;
+}
+
+/* ---------- exercise runner ---------- */
+async function doExercise(id,opts={}){
+  const ex=EX[id];const reps=Math.max(1,ex.reps-(opts.lighter?1:0));
+  if(!opts.inSession)openPlayer(ex.block,ex.name,ex.how);
+  else{$('#pBlock').textContent=ex.block+(opts.label?' · '+opts.label:'');$('#pTitle').textContent=ex.name;$('#pInstr').textContent=ex.how;$('#pDots').innerHTML='';$('#pCoach').textContent='';$('#pMeta').innerHTML='';$('#pSkip').hidden=false;}
+  if(!await needMic())return null;
+  const go=await waitMain(opts.inSession?'Start exercise':'Start');if(!go)return P.skip?{score:null}:null;
+  $('#pSkip').hidden=false;
+  const scores=[];const roots=repRoots(ex,reps);
+  for(let i=0;i<roots.length;i++){
+    if(P.abort||P.skip)break;
+    setMeta([['Round',`${i+1}/${roots.length}`],['Key',nn(roots[i])],['Tempo',ex.bpm+' bpm']]);
+    $('#pCoach').textContent='';
+    const notes=ex.deg.map(d=>({m:roots[i]+d,b:ex.len}));
+    const a=await attempt(notes,ex.bpm,true);if(!a)break;
+    const r=ex.kind==='messa'?scoreMessa(a):scoreNotes(a);scores.push(r.score);showDots(r);
+    $('#pCoach').textContent=ex.kind==='messa'?`${r.score}. Pitch steadiness ${r.stab}, swell shape ${r.swell}.`:coachLine(r);
+    setPhase('Round done');await sleep(1300);
+  }
+  P.mode='trail';
+  const avg=scores.length?Math.round(mean(scores)):null;
+  if(avg!=null){setMeta([['Average',avg+'%'],['Rounds',scores.length]]);$('#pCoach').textContent=avg>=85?'Clean work. ':avg>=60?'Solid. Keep the weak notes in mind next time.':'Tough one today. That is what practice is for.';}
+  if(!opts.inSession&&!P.abort){if(avg!=null){S.sessions.push({d:today(),items:[{id,score:avg}],avg});save();}await waitMain('Done');closePlayer();}
+  return{score:avg};
+}
+function coachLine(r){
+  const bad=r.notes.filter(n=>n.score<60);
+  if(!bad.length)return `${r.score}%. Every note landed.`;
+  const w=r.notes.reduce((a,b)=>b.score<a.score?b:a);
+  if(w.missed)return `${r.score}%. ${nn(w.m)} did not come through. Keep the air going through fast notes.`;
+  return `${r.score}%. ${nn(w.m)} was ${Math.abs(Math.round(w.err))} cents ${w.err<0?'flat':'sharp'}.`;
+}
+
+/* ---------- adaptive runs coach ---------- */
+function runNotes(r,st){
+  const root=runRoot(r);let deg=r.deg;const n=deg.length,mid=Math.ceil(n/2);
+  if(st.chunk==='a')deg=deg.slice(0,mid+1);else if(st.chunk==='b')deg=deg.slice(mid-1);
+  return deg.map(d=>({m:root+d,b:r.len}));
+}
+function stepOf(b){return Math.max(4,Math.round(b*.06));}
+const FLOOR=40;
+function decide(r,st,score){
+  const step=stepOf(st.bpm);let msg='';
+  if(st.chunk){
+    if(score>=85){if(st.chunk==='a'){st.chunk='b';msg='First half is clean. Now the second half.';}else{st.chunk=null;msg='Both halves clean. Putting the whole run back together.';}}
+    else msg='Stay on this piece until it is clean.';
+    return msg;
+  }
+  if(score>=85){st.streak++;
+    if(st.streak>=2){if(st.bpm>st.clean){st.clean=st.bpm;st.hist.push({d:today(),clean:st.clean});}
+      st.bpm+=step;st.streak=0;msg=`Clean twice. Locking in ${st.clean} bpm and moving up to ${st.bpm}.`;}
+    else msg='Clean. Do it once more at this speed to lock it in.';
+  }else if(score>=65){st.streak=0;msg='Almost. Same speed again.';}
+  else{st.streak=0;
+    if(st.bpm<=FLOOR){st.chunk='a';msg='We will split this run in two and learn each half first.';}
+    else{st.bpm=Math.max(FLOOR,st.bpm-step);msg=`Too fast for now. Slowing down to ${st.bpm} bpm.`;}}
+  return msg;
+}
+async function doRun(id,opts={}){
+  const r=runById(id);const st=runState(id);const max=opts.attempts||Infinity;
+  const how=`${r.tip} It plays the run, counts you in, then listens. Two clean takes in a row and it speeds up. Below 65% it slows down.`;
+  if(!opts.inSession)openPlayer('Runs coach',r.name,how);
+  else{$('#pBlock').textContent='Runs'+(opts.label?' · '+opts.label:'');$('#pTitle').textContent=r.name;$('#pInstr').textContent=how;$('#pDots').innerHTML='';$('#pCoach').textContent='';$('#pMeta').innerHTML='';$('#pSkip').hidden=false;}
+  $('#pAutoWrap').hidden=false;$('#pRefWrap').hidden=false;
+  if(!await needMic())return null;
+  const go=await waitMain('Start run');if(!go)return P.skip?{score:null}:null;
+  $('#pSkip').hidden=false;$('#pMain').hidden=true;
+  const scores=[];let n=0;
+  while(!P.abort&&!P.skip&&n<max){
+    n++;
+    setMeta([['Tempo',st.bpm+' bpm'],['Clean tempo',st.clean?st.clean+' bpm':'not yet'],['Streak',st.streak+'/2'],['Part',st.chunk==='a'?'1st half':st.chunk==='b'?'2nd half':'Whole run']]);
+    const a=await attempt(runNotes(r,st),st.bpm,$('#pRef').checked);if(!a)break;
+    const res=scoreNotes(a);showDots(res);
+    if(!st.chunk)scores.push(res.score);
+    const msg=decide(r,st,res.score);st.last=today();save();
+    $('#pCoach').textContent=`${res.score}%. ${msg}`;
+    setMeta([['Tempo',st.bpm+' bpm'],['Clean tempo',st.clean?st.clean+' bpm':'not yet'],['Streak',st.streak+'/2'],['Part',st.chunk==='a'?'1st half':st.chunk==='b'?'2nd half':'Whole run']]);
+    if(n>=max)break;
+    if($('#pAuto').checked){setPhase('Next take');await sleep(1800);}
+    else{const g=await waitMain('Next take');if(!g)break;}
+  }
+  $('#pMain').hidden=false;P.mode='trail';
+  const avg=scores.length?Math.round(mean(scores)):null;
+  if(!opts.inSession){if(avg!=null){S.sessions.push({d:today(),items:[{id:'run:'+id,score:avg}],avg});save();}
+    if(!P.abort){await waitMain('Done');closePlayer();}}
+  return{score:avg};
+}
+
+/* ---------- assessment ---------- */
+async function stableCapture(dur,pick){
+  let best=null;const win=[];const end=ctx.currentTime+dur;
+  const fn=f=>{win.push(f);while(win.length&&win[0].t<f.t-.35)win.shift();
+    const v=win.filter(x=>x.m);if(v.length>=12&&v.length/win.length>.85){const ms=v.map(x=>x.m);
+      if(Math.max(...ms)-Math.min(...ms)<.7){const md=Math.round(median(ms));if(best==null||pick(md,best)){best=md;$('#pCoach').textContent=`Best so far: ${nn(best)}`;}}}};
+  listeners.add(fn);
+  while(ctx.currentTime<end&&!P.abort){setPhase(`${Math.ceil(end-ctx.currentTime)}s`,true);await sleep(200);}
+  listeners.delete(fn);return best;
+}
+async function doAssess(){
+  openPlayer('Assessment','Voice check','Four short tests: lowest note, highest note, longest breath, and pitch matching. About four minutes. Warm up with a few lip trills first if you can.');
+  if(!await needMic())return;
+  if(!await waitMain('Begin'))return;
+  // 1 low
+  $('#pTitle').textContent='1 of 4 · Lowest note';
+  $('#pInstr').textContent='Sing "ah" at a comfy pitch, slide slowly down, and hold your lowest clear note for a second. Only notes you can hold steadily count. No growl or fry.';
+  $('#pCoach').textContent='';if(!await waitMain('Start'))return;
+  const low=await stableCapture(14,(a,b)=>a<b);if(P.abort)return;
+  // 2 high
+  $('#pTitle').textContent='2 of 4 · Highest note';
+  $('#pInstr').textContent='Slide up on "ooh" or "ah" and hold the highest note you can make without squeezing. Light head voice counts. Stop if it hurts.';
+  $('#pCoach').textContent=low!=null?`Lowest: ${nn(low)}`:'No steady low note heard. You can redo the assessment any time.';
+  if(!await waitMain('Start'))return;
+  const high=await stableCapture(14,(a,b)=>a>b);if(P.abort)return;
+  const lo=low??55,hi=high??76;
+  // 3 sustain
+  $('#pTitle').textContent='3 of 4 · Longest breath';
+  $('#pInstr').textContent='Big relaxed breath, then hold one comfortable note on "ah" as long as you can at a steady volume. The timer stops when you stop.';
+  $('#pCoach').textContent=`Range: ${nn(lo)} to ${nn(hi)}`;
+  if(!await waitMain('Start'))return;
+  let started=null,lastV=null;const t0=ctx.currentTime;
+  const fn=f=>{if(f.m){if(started==null)started=f.t;lastV=f.t;}};listeners.add(fn);
+  while(!P.abort){await sleep(100);const now=ctx.currentTime;
+    if(started!=null){setPhase((lastV-started).toFixed(1)+'s',true);if(now-lastV>1.2)break;}else{setPhase('Waiting');if(now-t0>10)break;}
+    if(started!=null&&now-started>60)break;}
+  listeners.delete(fn);if(P.abort)return;
+  const sustain=started!=null?Math.round((lastV-started)*10)/10:0;
+  // 4 pitch match
+  $('#pTitle').textContent='4 of 4 · Pitch matching';
+  $('#pInstr').textContent='You will hear five notes. After each one, sing it back on "ah" when the dot turns orange.';
+  $('#pCoach').textContent=`Held ${sustain}s.`;
+  if(!await waitMain('Start'))return;
+  const c={lo:lo+3,hi:hi-3};const targets=[0,1,2,3,4].map(i=>Math.round(c.lo+(c.hi-c.lo)*[.1,.55,.3,.8,.45][i]));
+  const errs=[];
+  for(const m of targets){if(P.abort)return;
+    const a=await attempt([{m,b:2}],60,true);if(!a)return;const r=scoreNotes(a);showDots(r);
+    if(!r.notes[0].missed)errs.push(Math.abs(r.notes[0].err));await sleep(600);}
+  const pitch=errs.length?Math.round(mean(errs)):50;
+  P.mode='trail';
+  S.assess.push({d:today(),low:lo,high:hi,sustain,pitch});save();
+  setPhase('Done');$('#pDots').innerHTML='';
+  $('#pTitle').textContent='Your baseline';
+  $('#pInstr').textContent=S.goal?'Saved. Your routine and milestones update from this.':'Saved. Next, pick the singer you want to be in a year on the Goal tab.';
+  setMeta([['Range',`${nn(lo)}–${nn(hi)}`],['Span',`${hi-lo} semitones`],['Breath',sustain+'s'],['Pitch',`±${pitch} cents`]]);
+  $('#pCoach').textContent=pitch<=15?'Your pitch is already tight.':pitch<=30?'Good ear. Runs will sharpen it further.':'Pitch matching is the first thing we will tighten.';
+  await waitMain(S.goal?'Done':'Set my goal');closePlayer();if(!S.goal)go('goal');
+}
+
+/* ---------- daily plan ---------- */
+function todayHealth(){return S.health[today()]||{};}
+function weights(){return S.goal?S.goal.w:STYLES.custom.w;}
+function planToday(){
+  const h=todayHealth();const w=weights();
+  if(h.voice==='hoarse')return{light:true,items:[{ex:'trill',lighter:true},{ex:'hum'}]};
+  const lighter=h.voice==='tired'||h.sleep==='low';
+  const items=[{ex:'trill',lighter}];
+  if(w.range>=.15)items.push({ex:'arp',lighter});
+  if(w.control>=.15)items.push({ex:'messa',lighter});
+  if(w.control>=.3&&!lighter)items.push({ex:'belt'});
+  items.push({ex:'rossini',lighter});
+  const pool=RUNS.filter(runUnlocked);
+  const day=Math.floor(Date.now()/864e5);
+  const ranked=pool.map((r,i)=>({r,k:(S.runs[r.id]?.last||'0000')+String((i+day)%pool.length).padStart(2,'0')})).sort((a,b)=>a.k<b.k?-1:1).map(x=>x.r);
+  const nRuns=lighter?1:w.runs>=.4?3:2;
+  const sel=goalSel();const sigs=ranked.filter(r=>r.sig&&sel.includes(r.sig));
+  const pick=[];if(sigs.length)pick.push(sigs[0]);
+  for(const r of ranked){if(pick.length>=nRuns)break;if(!pick.includes(r)&&!r.sig)pick.push(r);}
+  for(const r of ranked){if(pick.length>=nRuns)break;if(!pick.includes(r))pick.push(r);}
+  pick.forEach(r=>items.push({run:r.id,attempts:lighter?4:6}));
+  items.push({ex:'hum'});
+  return{light:false,lighter,items};
+}
+function itemMinutes(it){if(it.run)return it.attempts*0.4;const e=EX[it.ex];return (e.reps*(e.deg.length*e.len*2+4)*60/e.bpm)/60;}
+async function doSession(){
+  const plan=planToday();
+  openPlayer('Session','Today’s routine',`${plan.items.length} exercises. You can skip any of them.`);
+  if(!await needMic())return;
+  const results=[];
+  for(let i=0;i<plan.items.length;i++){
+    if(P.abort)return;P.skip=false;$('#pSkip').hidden=true;
+    const it=plan.items[i];const label=`${i+1} of ${plan.items.length}`;
+    const r=it.run?await doRun(it.run,{inSession:true,attempts:it.attempts,label}):await doExercise(it.ex,{inSession:true,lighter:it.lighter,label});
+    if(P.abort)return;
+    results.push({id:it.run?'run:'+it.run:it.ex,score:r?r.score:null});
+    $('#pAutoWrap').hidden=true;$('#pRefWrap').hidden=true;
+  }
+  const sc=results.filter(r=>r.score!=null).map(r=>r.score);
+  const avg=sc.length?Math.round(mean(sc)):null;
+  S.sessions.push({d:today(),items:results,avg});save();
+  $('#pSkip').hidden=true;$('#pDots').innerHTML='';$('#pBlock').textContent='Session';$('#pTitle').textContent='Session done';
+  $('#pInstr').textContent='Drink some water and give your voice a few quiet minutes.';
+  setMeta([['Average',avg!=null?avg+'%':'–'],['Exercises',results.length]]);
+  $('#pCoach').textContent='';setPhase('Done');
+  await waitMain('Done');closePlayer();
+}
+
+/* ---------- views ---------- */
+let TAB='today';
+function go(t){TAB=t;render();window.scrollTo(0,0);}
+document.querySelectorAll('nav.tabs button').forEach(b=>b.onclick=()=>go(b.dataset.tab));
+function render(){
+  document.querySelectorAll('nav.tabs button').forEach(b=>b.setAttribute('aria-current',b.dataset.tab===TAB?'page':'false'));
+  $('#today').textContent=new Date().toLocaleDateString('en-ZA',{weekday:'short',day:'numeric',month:'short'});
+  ({today:vToday,runs:vRuns,assess:vAssess,goal:vGoal,progress:vProgress})[TAB]();
+}
+function lastScore(id){for(let i=S.sessions.length-1;i>=0;i--){const it=S.sessions[i].items.find(x=>x.id===id);if(it&&it.score!=null)return it.score;}return null;}
+function pill(s){return s==null?'<span class="pill">new</span>':`<span class="pill ${tone(s)}">${s}%</span>`;}
+
+function vToday(){
+  const h=todayHealth();const a=S.assess[S.assess.length-1];
+  const due=a&&(Date.now()-new Date(a.d).getTime())/864e5>=7;
+  const plan=planToday();const mins=Math.round(plan.items.reduce((s,i)=>s+itemMinutes(i),0)+plan.items.length*.5);
+  const chip=(k,v,l)=>`<button class="chip" data-h="${k}" data-v="${v}" aria-pressed="${h[k]===v}">${l}</button>`;
+  $('#view').innerHTML=`
+  <h1>${S.goal?'Month '+monthIndex()+' of 12':'Train your voice'}</h1>
+  <p class="lede">${S.goal?esc(goalLabel()):'Do the assessment first so the routine fits your range.'}</p>
+  ${!a?`<div class="banner"><b>Start with the voice check.</b> Four short tests set your range and baseline. <div class="row" style="margin-top:10px"><button class="btn primary" id="goAssess">Take the assessment</button></div></div>`:''}
+  ${due?`<div class="banner"><b>Weekly re-check is due.</b> Your last assessment was ${esc(a.d)}. <button class="btn" id="goAssess2" style="margin-left:6px">Re-check now</button></div>`:''}
+  <h2>How is your voice today?</h2>
+  <div class="check"><span class="label">Voice</span><div class="chips">${chip('voice','fresh','Fresh')}${chip('voice','tired','Tired')}${chip('voice','hoarse','Hoarse or sore')}</div></div>
+  <div class="check"><span class="label">Sleep</span><div class="chips">${chip('sleep','low','Under 6h')}${chip('sleep','ok','6–8h')}${chip('sleep','good','8h+')}</div></div>
+  <div class="check"><span class="label">Water</span><div class="chips">${chip('water','yes','Drank enough')}${chip('water','no','Not yet')}</div></div>
+  ${plan.light?`<div class="banner"><b>Light day.</b> A hoarse voice needs rest, not reps. Only gentle trills and humming today. If it lasts more than two weeks, see an ENT or speech therapist.</div>`:plan.lighter?`<div class="banner">Lighter session today: fewer rounds and one run.</div>`:''}
+  <h2>Today’s routine <span class="label" style="margin-left:6px">about ${mins} min</span></h2>
+  <div class="list">${plan.items.map(it=>{
+    if(it.run){const r=runById(it.run),st=runState(it.run);return `<div class="item"><span class="blk">Runs</span><div><div class="t">${esc(r.name)}</div><div class="s">${it.attempts} takes from ${st.bpm} bpm${st.clean?` · clean at ${st.clean}`:''}</div></div>${pill(lastScore('run:'+r.id))}</div>`;}
+    const e=EX[it.ex];return `<div class="item"><span class="blk">${esc(e.block)}</span><div><div class="t">${esc(e.name)}</div><div class="s">${Math.max(1,e.reps-(it.lighter?1:0))} rounds · ${e.bpm} bpm</div></div>${pill(lastScore(it.ex))}</div>`;}).join('')}</div>
+  <div class="row" style="margin-top:18px"><button class="btn primary big" id="startSession">Start session</button></div>
+  <p class="lede" style="margin-top:14px;font-size:13px">No headphones needed. The app plays each pattern first, then goes quiet while you sing.</p>`;
+  document.querySelectorAll('[data-h]').forEach(b=>b.onclick=()=>{const t=today();S.health[t]=Object.assign({},S.health[t],{[b.dataset.h]:b.dataset.v});save();render();});
+  $('#goAssess')&&($('#goAssess').onclick=doAssess);$('#goAssess2')&&($('#goAssess2').onclick=doAssess);
+  $('#startSession').onclick=doSession;
+}
+
+function vRuns(){
+  $('#view').innerHTML=`<h1>Riffs and runs</h1>
+  <p class="lede">Each run has a clean tempo: the fastest speed you have sung it right twice in a row. The coach starts you slow, speeds up when you are clean, slows down when you are not, and splits a run in half when you need it. Level 2 opens when a level 1 run is clean at 72 bpm. Level 3 opens at 80 bpm on level 2.</p>
+  ${[1,2,3].map(l=>`<h2>Level ${l}</h2><div class="list">${RUNS.filter(r=>r.level===l).map(r=>{const st=S.runs[r.id];const un=runUnlocked(r);
+    return `<div class="item"><span class="blk">${r.deg.length} notes</span><div><div class="t">${esc(r.name)}</div><div class="s">${r.sig?esc(STYLES[r.sig].name)+' style · ':''}${st&&st.clean?`Clean at ${st.clean} bpm · practising at ${st.bpm}`:`Starts at ${r.start} bpm`}${un?'':' · locked, you can still try it'}</div></div><button class="btn" data-run="${r.id}">Practise</button></div>`;}).join('')}</div>`).join('')}`;
+  document.querySelectorAll('[data-run]').forEach(b=>b.onclick=()=>doRun(b.dataset.run));
+}
+
+function vAssess(){
+  const list=[...S.assess].reverse();
+  $('#view').innerHTML=`<h1>Voice check</h1>
+  <p class="lede">Lowest and highest steady notes, longest breath, and how close you land on a note you hear. Redo it once a week. Range only counts notes you can hold, so a crack at the top will not inflate it.</p>
+  <div class="row" style="margin:14px 0"><button class="btn primary big" id="runA">${S.assess.length?'Re-check my voice':'Start the assessment'}</button></div>
+  <h2>Single exercises</h2>
+  <div class="list">${Object.entries(EX).map(([id,e])=>`<div class="item"><span class="blk">${esc(e.block)}</span><div><div class="t">${esc(e.name)}</div><div class="s">${esc(e.how)}</div></div><button class="btn" data-ex="${id}">Practise</button></div>`).join('')}</div>
+  <h2>History</h2>
+  ${list.length?`<div class="tablewrap"><table><thead><tr><th>Date</th><th>Range</th><th class="r">Span</th><th class="r">Breath</th><th class="r">Pitch</th></tr></thead><tbody>${list.map(a=>`<tr><td>${esc(a.d)}</td><td>${nn(a.low)}–${nn(a.high)}</td><td class="num">${a.high-a.low}</td><td class="num">${a.sustain}s</td><td class="num">±${a.pitch}</td></tr>`).join('')}</tbody></table></div>`:'<p class="empty">No checks yet. Your first one becomes the baseline for your year plan.</p>'}`;
+  $('#runA').onclick=doAssess;
+  document.querySelectorAll('[data-ex]').forEach(b=>b.onclick=()=>doExercise(b.dataset.ex));
+}
+
+let draftSel=null,draftT=null,goalEditing=false;
+function noteOptions(sel,from,to){let o='';for(let m=from;m<=to;m++)o+=`<option value="${m}" ${m===sel?'selected':''}>${nn(m)}</option>`;return o;}
+function vGoal(){
+  const b=baseline();
+  if(!b){$('#view').innerHTML=`<h1>Your year goal</h1><p class="lede">The goal is built from your baseline, so do the voice check first.</p><div class="row"><button class="btn primary big" id="ga">Take the assessment</button></div>`;$('#ga').onclick=doAssess;return;}
+  if(S.goal&&!goalEditing){vGoalPlan();return;}
+  draftSel=draftSel||['whitney','mariah','aretha','celine','beyonce'];
+  if(!draftT){draftT=blend(draftSel).t;}
+  $('#view').innerHTML=`<h1>Who do you want to sing like in a year?</h1>
+  <p class="lede">Pick one or more. Targets combine the strongest of each, your routine leans toward their strengths, and each singer adds her own style of run drill. Targets are training goals inspired by each singer, capped to what is healthy for one year.</p>
+  <div class="styles">${Object.entries(STYLES).map(([k,s])=>`<button class="style" data-st="${k}" aria-pressed="${draftSel.includes(k)}"><b>${esc(s.name)}</b><small>${esc(s.like)}</small></button>`).join('')}</div>
+  <div class="panel">
+    <div class="grid2">
+      <label class="field"><span class="label">Top note</span><select id="tHigh">${noteOptions(Math.max(draftT.high,b.high),b.high,90)}</select></label>
+      <label class="field"><span class="label">Bottom note</span><select id="tLow">${noteOptions(Math.min(draftT.low,b.low),40,b.low)}</select></label>
+      <label class="field"><span class="label">Breath hold (s)</span><input id="tSus" type="number" min="5" max="60" value="${draftT.sustain}"></label>
+      <label class="field"><span class="label">Run clean tempo (bpm)</span><input id="tTempo" type="number" min="60" max="180" value="${draftT.tempo}"></label>
+      <label class="field"><span class="label">Pitch accuracy (± cents)</span><input id="tPitch" type="number" min="5" max="40" value="${draftT.pitch}"></label>
+    </div>
+    <p class="lede" style="font-size:13px;margin-top:12px">Your baseline: ${nn(b.low)}–${nn(b.high)}, ${b.sustain}s breath, ±${b.pitch} cents, runs clean at ${b.tempo} bpm. Healthy range growth is a few semitones a year, so anything beyond that is marked as a stretch goal for year two.</p>
+  </div>
+  <div class="row"><button class="btn primary big" id="gSave" ${draftSel.length?'':'disabled'}>Build my year plan</button>${S.goal?'<button class="btn" id="gCancel">Cancel</button>':''}</div>`;
+  document.querySelectorAll('[data-st]').forEach(x=>x.onclick=()=>{const k=x.dataset.st;
+    if(k==='custom')draftSel=draftSel.includes('custom')?[]:['custom'];
+    else{draftSel=draftSel.filter(v=>v!=='custom');draftSel=draftSel.includes(k)?draftSel.filter(v=>v!==k):[...draftSel,k];}
+    draftT=blend(draftSel).t;vGoal();});
+  $('#gCancel')&&($('#gCancel').onclick=()=>{goalEditing=false;draftSel=null;draftT=null;vGoal();});
+  $('#gSave').onclick=()=>{
+    const t={high:+$('#tHigh').value,low:+$('#tLow').value,sustain:+$('#tSus').value,tempo:+$('#tTempo').value,pitch:+$('#tPitch').value};
+    const sel=[...draftSel];const keep=S.goal&&goalEditing;
+    S.goal={singers:sel,t,w:blend(sel).w,start:keep?S.goal.start:today(),base:keep?S.goal.base:{...b}};
+    save();goalEditing=false;draftSel=null;draftT=null;vGoal();};
+}
+function vGoalPlan(){
+  const g=S.goal,b=g.base,ms=milestones(),k=monthIndex(),sel=goalSel();
+  const stretchHi=g.t.high-b.high>CAPS.high,stretchLo=b.low-g.t.low>CAPS.low,stretchTempo=g.t.tempo>Math.round(b.tempo*1.8);
+  const sigRuns=RUNS.filter(r=>r.sig&&sel.includes(r.sig));
+  $('#view').innerHTML=`<h1>${esc(joinNames(selNames(sel)))}</h1>
+  <p class="lede">Started ${esc(g.start)} · you are in month ${k} of 12.</p>
+  ${sigRuns.length?`<h2>Signature run drills</h2><div class="list">${sigRuns.map(r=>{const st=S.runs[r.id];return `<div class="item"><span class="blk">${esc(STYLES[r.sig].name.split(' ')[0])}</span><div><div class="t">${esc(r.name)}</div><div class="s">${runUnlocked(r)?'':'Opens at level '+r.level+' · '}${st&&st.clean?'Clean at '+st.clean+' bpm':'Starts at '+r.start+' bpm'}</div></div><button class="btn" data-run="${r.id}">Practise</button></div>`;}).join('')}</div>`:''}
+  <h2>Targets</h2>
+  <div class="tablewrap"><table><thead><tr><th>Skill</th><th>Baseline</th><th>Year target</th><th></th></tr></thead><tbody>
+  <tr><td>Top note</td><td>${nn(b.high)}</td><td>${nn(g.t.high)}</td><td>${stretchHi?'<span class="pill mid">stretch</span>':''}</td></tr>
+  <tr><td>Bottom note</td><td>${nn(b.low)}</td><td>${nn(g.t.low)}</td><td>${stretchLo?'<span class="pill mid">stretch</span>':''}</td></tr>
+  <tr><td>Breath hold</td><td>${b.sustain}s</td><td>${g.t.sustain}s</td><td></td></tr>
+  <tr><td>Run clean tempo</td><td>${b.tempo} bpm</td><td>${g.t.tempo} bpm</td><td>${stretchTempo?'<span class="pill mid">stretch</span>':''}</td></tr>
+  <tr><td>Pitch accuracy</td><td>±${b.pitch}</td><td>±${g.t.pitch}</td><td></td></tr></tbody></table></div>
+  <h2>Monthly milestones</h2>
+  <div class="tablewrap"><table><thead><tr><th>Month</th><th>Top</th><th>Bottom</th><th class="r">Breath</th><th class="r">Runs</th><th class="r">Pitch</th></tr></thead><tbody>
+  ${ms.slice(1).map(m=>`<tr class="${m.k===k?'now':''}"><td>${m.k}${m.k===k?' · now':''}</td><td>${nn(m.high)}</td><td>${nn(m.low)}</td><td class="num">${m.sustain}s</td><td class="num">${m.tempo}</td><td class="num">±${m.pitch}</td></tr>`).join('')}
+  </tbody></table></div>
+  <p class="lede" style="font-size:13px">Range milestones are capped at ${CAPS.high} semitones up and ${CAPS.low} down for the year. Pushing faster than that is how voices get hurt.</p>
+  <div class="row" style="margin-top:12px"><button class="btn" id="gEdit">Change goal</button></div>`;
+  document.querySelectorAll('[data-run]').forEach(x=>x.onclick=()=>doRun(x.dataset.run));
+  $('#gEdit').onclick=()=>{goalEditing=true;draftSel=[...sel];draftT={...g.t};vGoal();};
+}
+
+function lineChart(series,{yfmt=v=>v,ymin,ymax}={}){
+  const W=640,H=200,L=44,R=12,T=14,B=26;const pts=series.flatMap(s=>s.pts);if(!pts.length)return'';
+  const xs=pts.map(p=>p.x),ys=pts.map(p=>p.y);let x0=Math.min(...xs),x1=Math.max(...xs);if(x0===x1){x0-=1;x1+=1;}
+  let y0=ymin??Math.min(...ys),y1=ymax??Math.max(...ys);if(y0===y1){y0-=1;y1+=1;}const pad=(y1-y0)*.12;y0-=pad;y1+=pad;
+  const X=v=>L+(v-x0)/(x1-x0)*(W-L-R),Y=v=>H-B-(v-y0)/(y1-y0)*(H-T-B);
+  const ticks=[0,.5,1].map(f=>y0+(y1-y0)*f);
+  let s=`<svg class="chart" viewBox="0 0 ${W} ${H}" role="img">`;
+  ticks.forEach(v=>{s+=`<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="${L-6}" y="${Y(v)+3}" text-anchor="end">${esc(yfmt(v))}</text>`;});
+  const d0=new Date(x0*864e5),d1=new Date(x1*864e5);
+  s+=`<text x="${L}" y="${H-6}">${d0.toLocaleDateString('en-ZA',{day:'numeric',month:'short'})}</text><text x="${W-R}" y="${H-6}" text-anchor="end">${d1.toLocaleDateString('en-ZA',{day:'numeric',month:'short'})}</text>`;
+  series.forEach(se=>{if(!se.pts.length)return;const path=se.pts.map((p,i)=>`${i?'L':'M'}${X(p.x).toFixed(1)},${Y(p.y).toFixed(1)}`).join('');
+    s+=`<path d="${path}" fill="none" stroke="${se.color}" stroke-width="2.2"/>`;const lp=se.pts[se.pts.length-1];
+    s+=`<circle cx="${X(lp.x)}" cy="${Y(lp.y)}" r="4" fill="${se.color}"/>`;});
+  return s+'</svg>';
+}
+const dayNum=d=>Math.floor(new Date(d).getTime()/864e5);
+function goalBar(label,base,cur,ms,target,fmt,lowerBetter){
+  const span=Math.abs(target-base)||1;const p=v=>clamp((lowerBetter?base-v:v-base)/span*100,0,100);
+  return `<div class="goalbar"><div class="head"><span><b>${esc(label)}</b> <span class="label">now ${esc(fmt(cur))}</span></span><span class="label">target ${esc(fmt(target))}</span></div>
+  <div class="track"><div class="fill" style="width:${p(cur)}%"></div><div class="ms" style="left:${p(ms)}%" title="This month's milestone"></div></div></div>`;
+}
+function vProgress(){
+  const a=S.assess[S.assess.length-1];
+  let goalHtml='';
+  if(S.goal&&a){const g=S.goal,m=milestones()[monthIndex()];
+    goalHtml=`<h2>Toward your goal <span class="label" style="margin-left:6px">bar = now, tick = this month’s milestone</span></h2>
+    ${goalBar('Top note',g.base.high,a.high,m.high,g.t.high,nn)}
+    ${goalBar('Bottom note',g.base.low,a.low,m.low,g.t.low,nn,true)}
+    ${goalBar('Breath hold',g.base.sustain,a.sustain,m.sustain,g.t.sustain,v=>v+'s')}
+    ${goalBar('Run clean tempo',g.base.tempo,bestClean()||g.base.tempo,m.tempo,g.t.tempo,v=>v+' bpm')}
+    ${goalBar('Pitch accuracy',g.base.pitch,a.pitch,m.pitch,g.t.pitch,v=>'±'+v,true)}`;}
+  const rangeS=S.assess.length>1?lineChart([{color:'var(--accent)',pts:S.assess.map(x=>({x:dayNum(x.d),y:x.high}))},{color:'var(--fg)',pts:S.assess.map(x=>({x:dayNum(x.d),y:x.low}))}],{yfmt:v=>nn(v)}):'';
+  const runSeries=RUNS.filter(r=>S.runs[r.id]?.hist.length).map((r,i)=>({name:r.name,color:i===0?'var(--accent)':'var(--fg)',pts:S.runs[r.id].hist.map(h=>({x:dayNum(h.d),y:h.clean}))}));
+  const bestRun=RUNS.map(r=>({r,st:S.runs[r.id]})).filter(x=>x.st&&x.st.clean).sort((x,y)=>y.st.clean-x.st.clean);
+  const sess=S.sessions.filter(s=>s.avg!=null);
+  $('#view').innerHTML=`<h1>Progress</h1>
+  ${goalHtml||'<p class="lede">Set a goal after your first assessment to see progress against it.</p>'}
+  <h2>Range over time <span class="label" style="margin-left:6px">top in orange, bottom in black</span></h2>
+  ${rangeS||'<p class="empty">Shows up after your second voice check.</p>'}
+  <h2>Run clean tempos</h2>
+  ${bestRun.length?`<div class="list">${bestRun.map(x=>`<div class="item"><span class="blk">Level ${x.r.level}</span><div><div class="t">${esc(x.r.name)}</div><div class="s">${x.st.hist.length} speed-ups</div></div><span class="pill good num">${x.st.clean} bpm</span></div>`).join('')}</div>`:'<p class="empty">A run gets a clean tempo once you sing it right twice in a row.</p>'}
+  ${runSeries.length&&runSeries[0].pts.length>1?lineChart(runSeries.slice(0,2),{yfmt:v=>Math.round(v)}):''}
+  <h2>Session scores</h2>
+  ${sess.length>1?lineChart([{color:'var(--accent)',pts:sess.map((s,i)=>({x:dayNum(s.d)+i*0.01,y:s.avg}))}],{yfmt:v=>Math.round(v)+'%',ymin:0,ymax:100}):'<p class="empty">Your average per session will chart here.</p>'}
+  <h2>Settings</h2>
+  <div class="panel">
+    <label class="field"><span class="label">Timing offset: <span id="latV">${S.settings.latency}</span> ms</span><input id="lat" type="range" min="0" max="250" step="10" value="${S.settings.latency}"></label>
+    <p class="lede" style="font-size:13px">If notes you sang on time score as late, raise this. Bluetooth headphones usually need 150 or more.</p>
+    <label class="toggle" style="margin-top:6px"><input type="checkbox" id="fold" ${S.settings.fold?'checked':''}> Accept the right note in another octave</label>
+  </div>
+  <h2>Backup</h2>
+  <p class="lede">Everything is saved in this browser only. Download a backup now and then, and restore it on another device.</p>
+  <div class="row"><button class="btn" id="exp">Download backup</button><label class="btn" for="imp">Restore backup</label><input type="file" id="imp" accept="application/json" hidden></div>
+  <p id="impMsg" class="lede"></p>`;
+  $('#lat').oninput=e=>{S.settings.latency=+e.target.value;$('#latV').textContent=e.target.value;save();};
+  $('#fold').onchange=e=>{S.settings.fold=e.target.checked;save();};
+  $('#exp').onclick=()=>{const blob=new Blob([JSON.stringify(S,null,1)],{type:'application/json'});const u=URL.createObjectURL(blob);const l=document.createElement('a');l.href=u;l.download=`tuin-vocal-backup-${today()}.json`;document.body.appendChild(l);l.click();l.remove();setTimeout(()=>URL.revokeObjectURL(u),2000);};
+  $('#imp').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(!d.assess)throw 0;S=Object.assign(JSON.parse(JSON.stringify(DEF)),d);save();render();}catch(x){$('#impMsg').textContent='That file is not a TUIN Vocal backup.';}};r.readAsText(f);};
+}
+
+render();
+</script>
+</body>
+</html>
